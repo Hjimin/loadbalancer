@@ -2,23 +2,13 @@
 #define __LOADBALANCER_H__
 
 #include <stdint.h>
+#include <util/map.h>
+#include <net/ni.h>
+#include <stdbool.h>
 
-#define NAT 1
-#define DNAT 2
-#define DR 3
-
-#define CONFIG_PORT 4000
-
-typedef struct {
-	uint32_t	addr;
-	uint16_t	port;
-} Endpoint;
-
-typedef struct {
-	Endpoint	source;
-	uint16_t	port;
-	Endpoint	destination;
-	uint64_t	fin;
-} Session;
+int lb_ginit();
+int lb_init();
+void lb_loop();
+void lb_process(Packet* packet);
 
 #endif /* __LOADBALANCER_H__ */

@@ -4,13 +4,13 @@ CFLAGS = -I ../../include -O0 -g -Wall -Werror -m64 -ffreestanding -fno-stack-pr
 
 DIR = obj
 
-OBJS = obj/main.o
+OBJS = obj/main.o obj/loadbalancer.o obj/session.o obj/service.o obj/server.o
+
 
 LIBS = ../../lib/libpacketngin.a
 
 all: $(OBJS)
 	ld -melf_x86_64 -nostdlib -e main -o main $^ $(LIBS)
-	make -C util
 
 obj/%.o: src/%.c
 	mkdir -p $(DIR)
@@ -20,7 +20,6 @@ clean:
 	rm -rf obj
 	rm -f main
 	rm -f configure
-	make -C util clean
 
 run: all
 	../../bin/console script
