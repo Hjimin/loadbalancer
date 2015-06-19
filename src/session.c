@@ -77,7 +77,7 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 	return session;
 }
 
-Session* session_get(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
+Session* session_get_from_service(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
 	Service* service = service_found(ni, protocol, daddr, dport);
 	if(service == NULL)
 		return NULL;
@@ -120,7 +120,7 @@ bool session_free(Session* session) {
 	return true;
 }
 
-Session* session_get_nat(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
+Session* session_get_from_server(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
 	Map* servers = ni_config_get(ni, "pn.lb.servers");
 	if(servers == NULL)
 		return NULL;
@@ -135,23 +135,6 @@ Session* session_get_nat(NetworkInterface* ni, uint8_t protocol, uint32_t saddr,
 	if(session != NULL) {
 		session_recharge(session);
 	}
-
-	return session;
-}
-
-Session* session_get_dnat(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
-	Map* servers = ni_config_get(ni, "pn.lb.servers");
-	if(servers == NULL)
-		return NULL;
-
-	Server* server = map_get(servers, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport));
-	if(server == NULL)
-		return NULL;
-	
-	Session* session = map_get(server->service->sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)daddr << 16 | (uint64_t)dport));
-
-	if(session != NULL)
-		session_recharge(session);
 
 	return session;
 }

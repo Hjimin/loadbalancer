@@ -22,14 +22,23 @@ int lb_ginit() {
 	for(int i = 0; i < count; i++) {
 		NetworkInterface* ni = ni_get(i);
 		Map* services = map_create(4096, NULL, NULL, NULL);
-		if(services == NULL)
+		if(services == NULL) {
 			return -1;
+		}
 		ni_config_put(ni, "pn.lb.services", services);
+
 		Map* servers = map_create(4096, NULL, NULL, NULL);
-		if(servers == NULL)
+		if(servers == NULL) {
 			return -1;
+		}
 		ni_config_put(ni, "pn.lb.servers", servers);
 		arp_announce(ni, 0);
+
+		Map* ip_table = map_create(4096, NULL, NULL, NULL);
+		if(ip_table == NULL) {
+			return -1;
+		}
+		ni_config_put(ni, "pn.lb.ip_table", ip_table);
 	}
 
 	return 0;
