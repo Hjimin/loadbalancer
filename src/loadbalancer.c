@@ -8,7 +8,6 @@
 #include <net/arp.h>
 #include <net/tcp.h>
 #include <net/udp.h>
-#include <malloc.h>
 
 #include "loadbalancer.h"
 #include "service.h"
@@ -46,9 +45,6 @@ void lb_loop() {
 }
 
 static bool process_service(Packet* packet) {
-	if(!packet)
-		return true;
-
 	NetworkInterface* ni = packet->ni;
 
 	if(service_is_empty(ni))
@@ -111,8 +107,6 @@ static bool process_service(Packet* packet) {
 
 				tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 				ni_output(session->server->ni, packet);
-				packet = NULL;
-					
 				if(session->fin && tcp->ack) {
 					event_timer_remove(session->event_id);
 					session_free(session);
@@ -156,7 +150,6 @@ static bool process_service(Packet* packet) {
 				}
 				udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 				ni_output(session->server->ni, packet);
-				packet = NULL;
 				return true;
 			}
 		}
@@ -167,8 +160,6 @@ static bool process_service(Packet* packet) {
 
 static bool process_server(Packet* packet) {
 	NetworkInterface* ni = packet->ni;
-	if(!packet)
-		return true;
 	
 	if(server_is_empty(ni))
 		return false;
@@ -180,7 +171,6 @@ static bool process_server(Packet* packet) {
 		return true;
 	
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
-	
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
 		
@@ -234,7 +224,6 @@ static bool process_server(Packet* packet) {
 				tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 
 				ni_output(session->service->ni, packet);
-				packet = NULL;
 				if(tcp->fin) {
 					session_set_fin(session);
 				}
@@ -282,10 +271,8 @@ static bool process_server(Packet* packet) {
 						break;
 				}
 
-				udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
+				udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 				ni_output(session->service->ni, packet);
-				packet = NULL;
-
 				return true;
 			}
 		}

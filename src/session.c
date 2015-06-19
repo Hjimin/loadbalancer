@@ -27,7 +27,7 @@ void session_recharge(Session* session) {
 }
 
 Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
-	Service* service = find_service(ni, protocol, daddr, dport);
+	Service* service = service_found(ni, protocol, daddr, dport);
 	if(service == NULL) {
 		return NULL;
 	}
@@ -78,7 +78,7 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 }
 
 Session* session_get(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
-	Service* service = find_service(ni, protocol, daddr, dport);
+	Service* service = service_found(ni, protocol, daddr, dport);
 	if(service == NULL)
 		return NULL;
 
@@ -91,21 +91,31 @@ Session* session_get(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uin
 }
 
 bool session_free(Session* session) {
-	if(!map_remove(session->server->sessions, (void*)((uint64_t)session->protocol << 48 | (uint64_t)session->v_addr << 16 | (uint64_t)session->v_port)))
-		printf("Can'nt remove session from servers\n");
-	if(!map_remove(session->service->sessions, (void*)((uint64_t)session->protocol << 48 | (uint64_t)session->s_addr << 16 | (uint64_t)session->s_port)))
-		printf("Can'nt remove session from services\n");
+	bool _session_free(void* context) {
+		Session* session = context;
+		if(!map_remove(session->server->sessions, (void*)((uint64_t)session->protocol << 48 | (uint64_t)session->v_addr << 16 | (uint64_t)session->v_port)))
+			printf("Can'nt remove session from servers\n");
+		if(!map_remove(session->service->sessions, (void*)((uint64_t)session->protocol << 48 | (uint64_t)session->s_addr << 16 | (uint64_t)session->s_port)))
+			printf("Can'nt remove session from services\n");
 
-	server_is_remove_grace(session->server);
-	service_is_remove_grace(session->service);
-	if(session->server->mode == LB_MODE_NAT) {
-		if(session-> protocol == IP_PROTOCOL_TCP)
-			tcp_port_free(session->server->ni, session->v_port);
-		else if(session-> protocol == IP_PROTOCOL_UDP)
-			udp_port_free(session->server->ni, session->v_port);
+		server_is_remove_grace(session->server);
+		service_is_remove_grace(session->service);
+		if(session->server->mode == LB_MODE_NAT) {
+			if(session-> protocol == IP_PROTOCOL_TCP)
+				tcp_port_free(session->server->ni, session->v_port);
+			else if(session-> protocol == IP_PROTOCOL_UDP)
+				udp_port_free(session->server->ni, session->v_port);
+		}
+
+		free(session);
+
+		return false;
 	}
 
-	free(session);
+	if(session->event_id != 0) {
+		event_timer_remove(session->event_id);
+	}
+	session->event_id = event_timer_add(_session_free, session, 0, 0);
 
 	return true;
 }
@@ -117,7 +127,6 @@ Session* session_get_nat(NetworkInterface* ni, uint8_t protocol, uint32_t saddr,
 
 	Server* server = map_get(servers, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport));
 	if(server == NULL) {
-		printf("fail\n");
 		return NULL;
 	}
 	

@@ -1,26 +1,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <malloc.h>
 #include <thread.h>
-#include <net/ni.h>
-#include <net/ether.h>
-#include <net/arp.h>
 #include <net/ip.h>
-#include <net/icmp.h>
-#include <net/checksum.h>
-#include <net/udp.h>
-#include <net/tcp.h>
-#include <util/list.h>
-#include <util/map.h>
-#include <util/event.h>
 #include <util/cmd.h>
 #include <util/types.h>
 #include <readline.h>
 
 #include "service.h"
 #include "server.h"
-#include "session.h"
 #include "loadbalancer.h"
 
 #define DEFAULT_TIMEOUT		30000000 //30sec
@@ -135,6 +123,7 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		uint16_t port = 0;
 		uint64_t wait = 0;
 		uint8_t ni_num = 0;
+		NetworkInterface* ni = NULL;
 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t")) {
@@ -161,20 +150,35 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				continue;
 			} else if(!strcmp(argv[i], "-p")) {
 				i++;
-				if(is_uint8(argv[i]))
+				if(is_uint8(argv[i])) {
 					ni_num = parse_uint8(argv[i]);
-				else
+					ni = ni_get(ni_num);
+				} else
 					return i;
 
+				continue;
+			} else if(!strcmp(argv[i], "-f")) {
+				is_force = true;
 				continue;
 			} else
 				return i;
 		}
 
+		if(ni == NULL) {
+			printf("Can'nt found NetworkInterface\n");
+			return -1;
+		}
+
+		Service* service = service_found(ni, protocol, addr, port);
+		if(service == NULL) {
+			printf("Can'nt found Service\n");
+			return -1;
+		}
+
 		if(!is_force)
-			service_remove(protocol, addr, port, ni_num, wait); //grace
+			service_remove(service, wait); //grace
 		else
-			service_remove_force(protocol, addr, port, ni_num);
+			service_remove_force(service);
 
 		return 0;
 	} else if(!strcmp(argv[1], "list")) {
@@ -260,7 +264,21 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 				return i;
 		}
 
-		server_add(protocol, service_addr, service_port, service_ni_num, server_addr, server_port, mode, ni_num);
+		NetworkInterface* service_ni = ni_get(service_ni_num);
+		if(service_ni == NULL) {
+			printf("Can'nt found server_ni");
+			return -1;
+		}
+		Service* service = service_found(service_ni, protocol, service_addr, service_port);
+		if(service == NULL) {
+			printf("Can'nt found service\n");
+			return -1;
+		}
+
+		if(!server_add(service, server_addr, server_port, mode, ni_num)) {
+			printf("Can'nt add server\n");
+			return -1;
+		}
 
 		return 0;
 	} else if(!strcmp(argv[1], "delete")) {
@@ -332,11 +350,27 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 				return i;
 		}
 
+		NetworkInterface* service_ni = ni_get(service_ni_num);
+		if(service_ni == NULL) {
+			printf("Can'nt found server_ni");
+			return -1;
+		}
+		Service* service = service_found(service_ni, protocol, service_addr, service_port);
+		if(service == NULL) {
+			printf("Can'nt found service\n");
+			return -1;
+		}
+
+		Server* server = server_found(service, server_addr, server_port, ni_num);
+		if(server == NULL) {
+			printf("Can'nt found server\n");
+			return -1;
+		}
 		bool result;
 		if(is_force) {
-			result = server_remove_force(protocol, service_addr, service_port, service_ni_num, server_addr, server_port, ni_num);
+			result = server_remove_force(server);
 		} else {
-			result = server_remove(protocol, service_addr, service_port, service_ni_num, server_addr, server_port, ni_num, wait);
+			result = server_remove(server, wait);
 		}
 
 		if(!result)
@@ -374,8 +408,18 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 				return i;
 		}
 
-		printf("Server List\n");
-		server_dump(protocol, service_addr, service_port, service_ni_num);
+		NetworkInterface* service_ni = ni_get(service_ni_num);
+		if(service_ni == NULL) {
+			printf("Can'nt found server_ni");
+			return -1;
+		}
+		Service* service = service_found(service_ni, protocol, service_addr, service_port);
+		if(service == NULL) {
+			printf("Can'nt found service\n");
+			return -1;
+		}
+
+		server_dump(service);
 		return 0;
 	} else
 		return -1;
@@ -388,6 +432,11 @@ Command commands[] = {
 		.name = "exit",
 		.desc = "Exit LoadBalancer",
 		.func = cmd_exit
+	},
+	{
+		.name = "help",
+		.desc = "Show this message",
+		.func = cmd_help
 	},
 	{
 		.name = "service",
@@ -452,7 +501,8 @@ int main(int argc, char** argv) {
 			NetworkInterface* ni = ni_get(i);
 			if(ni_has_input(ni)) {
 				Packet* packet = ni_input(ni);
-				lb_process(packet);
+				if(packet != NULL)
+					lb_process(packet);
 			}
 
 		}

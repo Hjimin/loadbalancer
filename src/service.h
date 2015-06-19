@@ -22,11 +22,13 @@ typedef struct {
 	Map*		sessions;
 } Service;
 
+bool service_arp_process(Packet* packet);
 bool service_add(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t schedule, uint8_t ni_num, uint64_t timeout);
 bool service_is_empty(NetworkInterface* ni);
-Service* find_service(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
-bool service_remove(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num, uint64_t wait);
-bool service_remove_force(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num);
+Service* service_found(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
+
 void service_is_remove_grace(Service* service);
+bool service_remove(Service* service, uint64_t wait);
+bool service_remove_force(Service* service);
 void service_dump();
 #endif

@@ -50,7 +50,22 @@ bool server_is_empty(NetworkInterface* ni) {
 		return false;
 }
 
-bool server_add(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num, uint32_t server_addr, uint16_t server_port, uint8_t mode, uint8_t ni_num) {
+Server* server_found(Service* service, uint32_t addr, uint16_t port, uint8_t ni_num) {
+	List* servers = service->servers;
+
+	ListIterator iter;
+	list_iterator_init(&iter, servers);
+	while(list_iterator_has_next(&iter)) { 
+		Server* server = list_iterator_next(&iter);
+		if((server->addr == addr) && (server->port == port) && (server->ni_num == ni_num)) {
+			return server;
+		}
+	}
+
+	return NULL;
+}
+
+bool server_add(Service* service, uint32_t server_addr, uint16_t server_port, uint8_t mode, uint8_t ni_num) {
 	Server* server_alloc(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t mode, uint8_t ni_num) {
 		Server* server = (Server*)malloc(sizeof(Server));
 		if(server == NULL) {
@@ -59,7 +74,7 @@ bool server_add(uint8_t protocol, uint32_t service_addr, uint16_t service_port, 
 		}
 
 		server->state = LB_SERVER_STATE_OK;
-		server->protocol = protocol;
+		server->protocol = service->protocol;
 		server->addr = addr;
 		server->port = port;
 		server->mode = mode;
@@ -87,13 +102,7 @@ bool server_add(uint8_t protocol, uint32_t service_addr, uint16_t service_port, 
 		return NULL;
 	}
 
-	Service* service = find_service(ni_get(service_ni_num), protocol, service_addr, service_port);
-	if(service == NULL) { 
-		printf("Can'nt found service\n");
-		return false;
-	}
-
-	Server* server = server_alloc(protocol, server_addr, server_port, mode, ni_num);
+	Server* server = server_alloc(service->protocol, server_addr, server_port, mode, ni_num);
 	server->service = service;
 	if(server == NULL) {
 		printf("Can'nt create server\n");
@@ -106,33 +115,21 @@ bool server_add(uint8_t protocol, uint32_t service_addr, uint16_t service_port, 
 		return false;
 	}
 
-	NetworkInterface* ni = ni_get(ni_num);
-	Map* servers = ni_config_get(ni, "pn.lb.servers");
+	NetworkInterface* server_ni = ni_get(ni_num);
+	if(server_ni == NULL) {
+		printf("NetworkInterface not found\n");
+		return false;
+	}
+	Map* servers = ni_config_get(server_ni, "pn.lb.servers");
 	if(servers == NULL) {
 		printf("Can'nt found servers\n");
 		return false;
 	}
-	if(!map_put(servers, (void*)((uint64_t)protocol << 48 | (uint64_t)server_addr << 16 | (uint64_t)server_port), server)) {
+	if(!map_put(servers, (void*)((uint64_t)service->protocol << 48 | (uint64_t)server_addr << 16 | (uint64_t)server_port), server)) {
 		printf("map put fail\n");
 	}
 
 	return true;
-}
-
-static Server* find_server(Service* service, uint32_t addr, uint16_t port) {
-	List* servers = service->servers;
-
-	ListIterator iter;
-	list_iterator_init(&iter, servers);
-
-	while(list_iterator_has_next(&iter)) {
-		Server* server = list_iterator_next(&iter);
-		if((server->addr == addr) && (server->port == port)) {
-			return server;
-		}
-	}
-
-	return NULL;
 }
 
 void server_is_remove_grace(Server* server) {
@@ -155,70 +152,59 @@ void server_is_remove_grace(Server* server) {
 	}
 }
 
-bool server_remove(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num, uint32_t server_addr, uint16_t server_port, uint8_t ni_num, uint64_t wait) {
+bool server_remove(Server* server, uint64_t wait) {
 	bool server_delete_event(void* context) {
 		Server* server = context;
-		Service* service = server->service;
+		server_remove_force(server);
 
-		Map* sessions = server->sessions;
-		if(map_is_empty(sessions)) {
-			list_remove_data(service->servers, server);
-			server_free(server);
-			return false;
-		} else {
-			//Delete all sessions
-			MapIterator iter;
-			map_iterator_init(&iter, sessions);
-			while(map_iterator_has_next(&iter)) {
-				MapEntry* entry = map_iterator_remove(&iter);
-				Session* session = entry->data;
-				map_remove(session->server->sessions, (void*)((uint64_t)session->protocol << 48 | (uint64_t)session->s_addr << 16 | (uint64_t)session->s_port));
-
-
-				session_free(session);
-			}
-
-			list_remove_data(service->servers, server);
-			server_free(server);
-		}
-
-		return false;
-	}
-
-	Service* service = find_service(ni_get(service_ni_num), protocol, service_addr, service_port);
-	if(service == NULL) {
-		printf("Can'nt found service\n");
-		return false;
-	}
-
-	Server* server = find_server(service, server_addr, server_port);
-	if(server == NULL) {
-		printf("Can'nt found server\n");
 		return false;
 	}
 
 	if(map_is_empty(server->sessions)) {
-		list_remove_data(service->servers, server);
-		server_free(server);
+		server_remove_force(server);
 		return true;
 	} else {
 		server->state = LB_SERVER_STATE_REMOVING;
-		server->event_id = event_timer_add(server_delete_event, server, wait, 0);
+
+		if(wait != 0)
+			server->event_id = event_timer_add(server_delete_event, server, wait, 0);
 
 		return true;
 	}
 }
 
-bool server_remove_force(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num, uint32_t server_addr, uint16_t server_port, uint8_t server_ni_num) {
-	NetworkInterface* ni = ni_get(service_ni_num);
-	Service* service = find_service(ni, protocol, service_addr, service_port);
-	if(service == NULL)
-		return false;
+bool server_remove_force(Server* server) {
+	if(server->event_id != 0) {
+		event_timer_remove(server->event_id);
+		server->event_id = 0;
+	}
+
+	Map* sessions = server->sessions;
+
+	if(map_is_empty(sessions)) {
+		//delete from service
+		list_remove_data(server->service->servers, server);
+		//delet from ni
+		Map* servers = ni_config_get(server->ni, "pn.lb.servers");
+		map_remove(servers, (void*)((uint64_t)server->protocol << 48 | (uint64_t)server->addr << 16 | (uint64_t)server->port));
+		server_free(server);
+		return true;
+	}
+
+	server->state = LB_SERVER_STATE_REMOVING;
+	MapIterator iter;
+	map_iterator_init(&iter, sessions);
+	while(map_iterator_has_next(&iter)) {
+		MapEntry* entry = map_iterator_next(&iter);
+		Session* session = entry->data;
+		
+		session_free(session);
+	}
 
 	return true;
 }
 
-void server_dump(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num) {
+void server_dump(Service* service) {
 	void print_state(uint8_t state) {
 		if(state == LB_SERVER_STATE_OK)
 			printf("OK\t\t");
@@ -246,18 +232,6 @@ void server_dump(uint8_t protocol, uint32_t service_addr, uint16_t service_port,
 	}
 	void print_session_count(Map* sessions) {
 		printf("%d\t", map_size(sessions));
-	}
-
-	NetworkInterface* ni = ni_get(service_ni_num);
-	if(ni == NULL) {
-		printf("Can'nt found Network Interface\n");
-		return;
-	}
-
-	Service* service = find_service(ni, protocol, service_addr, service_port);
-	if(service == NULL) {
-		printf("Can'nt found service\n");
-		return;
 	}
 
 	ListIterator iter;

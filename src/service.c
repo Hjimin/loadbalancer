@@ -61,8 +61,6 @@ bool service_arp_process(Packet* packet) {
 	switch(endian16(arp->operation)) {
 		case 1:;	// Request
 			Map* services = ni_config_get(packet->ni, "pn.lb.services");
-			if(map_is_empty(services))
-				return false;
 
 			MapIterator iter;
 			map_iterator_init(&iter, services);
@@ -80,7 +78,6 @@ bool service_arp_process(Packet* packet) {
 					arp->spa = endian32(service->addr);
 					
 					ni_output(packet->ni, packet);
-					ni_free(packet);
 					
 					return true;
 				}
@@ -93,8 +90,9 @@ bool service_arp_process(Packet* packet) {
 			ARPEntity* entity = map_get(arp_table, (void*)(uint64_t)sip);
 			if(!entity) {
 				entity = __malloc(sizeof(ARPEntity), packet->ni->pool);
-				if(!entity)
+				if(!entity) {
 					goto done;
+				}
 				
 				map_put(arp_table, (void*)(uint64_t)sip, entity);
 			}
@@ -146,11 +144,6 @@ static Service* service_alloc(uint8_t protocol, uint32_t addr, uint16_t port, ui
 	service->ni = ni;
 
 	Map* services = ni_config_get(ni, "pn.lb.services");
-	if(services == NULL) {
-		printf("Can'nt found services\n");
-		goto error_services_not_found;
-	}
-
 	if(!map_put(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | port), service)) {
 		printf("Can'nt add service\n");
 		goto error_can_not_add_service;
@@ -159,7 +152,6 @@ static Service* service_alloc(uint8_t protocol, uint32_t addr, uint16_t port, ui
 	return service;
 
 error_can_not_add_service:
-error_services_not_found:
 error_ni_not_found:
 	if(service->sessions != NULL)
 		free(service->sessions);
@@ -178,6 +170,10 @@ error_service_alloc:
 }
 
 static bool service_free(Service* service) {
+	if(!map_is_empty(service->sessions)) {
+		printf("Session is not empty\n");
+		return false;
+	}
 	list_destroy(service->servers);
 	map_destroy(service->sessions);
 	free(service);
@@ -185,30 +181,18 @@ static bool service_free(Service* service) {
 	return true;
 }
 
-Service* find_service(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
-	Map* services = ni_config_get(ni, "pn.lb.services");
-	if(services == NULL) {
-		printf("Can'nt found services: find_service\n");
-		return NULL;
-	}
-
-	return map_get(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port));
-}
-
 bool service_add(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t schedule, uint8_t ni_num, uint64_t timeout) {
 	NetworkInterface* ni = ni_get(ni_num);
 	if(ni == NULL) {
-		printf("Can'nt found NI\n");
+		printf("NetworkInterface not found\n");
 		return false;
 	}
-
-	if(find_service(ni, protocol, addr, port) != NULL) {
-		printf("Can'nt found service\n");
+	if(service_found(ni, protocol, addr, port) != NULL) {
+		printf("Already service exist\n");
 		return false;
 	}
 
 	Service* service = service_alloc(protocol, addr, port, schedule, ni_num, timeout);
-
 	if(service == NULL) {
 		printf("Can'nt add Service\n");
 		return false;
@@ -219,11 +203,6 @@ bool service_add(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t schedul
 
 bool service_is_empty(NetworkInterface* ni) {
 	Map* services = ni_config_get(ni, "pn.lb.services");
-
-	if(services == NULL) {
-		printf("Can'nt found services\n");
-		return true;
-	}
 
 	if(map_is_empty(services))
 		return true;
@@ -239,89 +218,31 @@ void service_is_remove_grace(Service* service) {
 		if(service->event_id != 0)
 			event_timer_remove(service->event_id);
 
-		//Remove all server in service
-		List* list = service->servers;
-		ListIterator iter;
-		list_iterator_init(&iter, list);
-		while(list_iterator_has_next(&iter)) {
-			Server* server = list_iterator_remove(&iter);
-
-			Map* servers = ni_config_get(server->ni, "pn.lb.servers");
-			if(servers == NULL) {
-				printf("Can'nt found servers\n");
-				continue;
-			}
-			if(!map_remove(servers, (void*)((uint64_t)server->protocol << 48 | (uint64_t)server->addr << 16 | (uint64_t)server->port)))
-				printf("Can'nt remove servers\n");
-
-			server_free(server);
-		}
-
-		Map* services = ni_config_get(service->ni, "pn.lb.services");
-		if(!map_remove(services, (void*)((uint64_t)service->protocol << 48 | (uint64_t)service->addr << 16 | (uint64_t)service->port)))
-			printf("Can'nt remove service\n");
-		service_free(service);
+		service_remove_force(service);
 	}
 }
 
-bool service_remove(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num, uint64_t wait) {
+Service* service_found(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
+	Map* services = ni_config_get(ni, "pn.lb.services");
+
+	return map_get(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port));
+}
+
+bool service_remove(Service* service, uint64_t wait) {
 	bool service_delete_event(void* context) {
-		Service* service = context;
-		NetworkInterface* ni = service->ni;
-		if(map_is_empty(service->sessions)) { //none session
-			//Remove all server in service
-			List* list = service->servers;
-			ListIterator iter;
-			list_iterator_init(&iter, list);
-			while(list_iterator_has_next(&iter)) {
-				Server* server = list_iterator_remove(&iter);
-				//remove from ni
-				server_free(server);
-			}
+		service_remove_force(service);
 
-			Map* services = ni_config_get(ni, "pn.lb.services");
-			map_remove(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port));
-			service_free(service);
-
-		} else {
-			service_remove_force(service->protocol, service->addr, service->port, service->ni_num);
-		}
-
-		return false;
-	}
-
-	NetworkInterface* ni = ni_get(ni_num);
-	if(ni == NULL) {
-		printf("Can'nt found Network Interface\n");
-		return false;
-	}
-
-	Service* service = find_service(ni, protocol, addr, port);
-	if(!service) {
-		printf("Can'nt found Service\n");
 		return false;
 	}
 
 	if(map_is_empty(service->sessions)) { //none session
-		//Remove all server in service
-		List* list = service->servers;
-		ListIterator iter;
-		list_iterator_init(&iter, list);
-		while(list_iterator_has_next(&iter)) {
-			Server* server = list_iterator_remove(&iter);
-			server_free(server);
-		}
-
-		Map* services = ni_config_get(ni, "pn.lb.services");
-		map_remove(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port));
-		service_free(service);
+		service_remove_force(service);
 
 		return true;
 	} else {
 		service->state = LB_SERVICE_STATE_REMOVING;
 
 		if(wait) {
-			service->state = LB_SERVICE_STATE_REMOVING;
 			service->event_id = event_timer_add(service_delete_event, service, wait, 0);
 		}
 
@@ -329,46 +250,28 @@ bool service_remove(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_n
 	}
 }
 
-bool service_remove_force(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num) {
-	NetworkInterface* ni = ni_get(ni_num);
-	if(ni == NULL) {
-		printf("Can'nt found Network Interface\n");
-		return false;
+bool service_remove_force(Service* service) {
+	if(service->event_id != 0) {
+		event_timer_remove(service->event_id);
+		service->event_id = 0;
 	}
 
-	Service* service = find_service(ni, protocol, addr, port);
-	if(!service) {
-		printf("Can'nt found Service\n");
-		return false;
-	}
+	service->state = LB_SERVICE_STATE_REMOVING;
 
-	//Remove all server in service
 	List* servers = service->servers;
 	ListIterator servers_iter;
 	list_iterator_init(&servers_iter, servers);
 	while(list_iterator_has_next(&servers_iter)) {
-		Server* server = list_iterator_remove(&servers_iter);
-		server_free(server);
+		Server* server = list_iterator_next(&servers_iter);
+		server_remove_force(server);
 	}
 
-	//Remove all sessions in services
-	Map* sessions = service->sessions;
-	MapIterator sessions_iter;
-	map_iterator_init(&sessions_iter, sessions);
-	while(map_iterator_has_next(&sessions_iter)) {
-		MapEntry* entry = map_iterator_remove(&sessions_iter);
-		Session* session = entry->data;
-
-		if(session->event_id != 0)
-			event_timer_remove(session->event_id);
-
-		session_free(session);
+	if(map_is_empty(service->sessions)) {
+		Map* services = ni_config_get(service->ni, "pn.lb.services");
+		if(!map_remove(services, (void*)((uint64_t)service->protocol << 48 | (uint64_t)service->addr << 16 | (uint64_t)service->port)))
+			printf("Can'nt remove service\n");
+		service_free(service);
 	}
-
-	//Remove service
-	Map* services = ni_config_get(ni, "pn.lb.services");
-	map_remove(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port));
-	service_free(service);
 
 	return true;
 }

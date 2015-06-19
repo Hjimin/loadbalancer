@@ -1,6 +1,5 @@
 #ifndef __SERVER_H__
-#define __SERVER_H__
-#include <stdbool.h>
+#define __SERVER_H__ #include <stdbool.h>
 #include <net/ni.h>
 #include <util/map.h>
 
@@ -26,14 +25,16 @@ typedef struct {
 	Map*		sessions;
 } Server;
 
-bool service_arp_process(Packet* packet);
 Server* server_alloc(Service* service);
 bool server_free(Server* server);
-bool server_add(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num, uint32_t server_addr, uint16_t server_port, uint8_t mode, uint8_t out_port);
+bool server_add(Service* service, uint32_t server_addr, uint16_t server_port, uint8_t mode, uint8_t out_port);
 bool server_is_empty(NetworkInterface* ni);
-bool server_remove(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num, uint32_t server_addr, uint16_t server_port, uint8_t ni_num, uint64_t wait);
-bool server_remove_force(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num, uint32_t server_addr, uint16_t server_port, uint8_t server_ni_num);
+Server* server_found(Service* service, uint32_t server_addr, uint16_t server_port, uint8_t ni_num);
+
+bool server_remove(Server* server, uint64_t wait);
+bool server_remove_force(Server* server);
 void server_is_remove_grace(Server* server);
-void server_dump(uint8_t protocol, uint32_t service_addr, uint16_t service_port, uint8_t service_ni_num);
+
+void server_dump(Service* service);
 
 #endif/* __SERVER_H__*/
