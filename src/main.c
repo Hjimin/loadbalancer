@@ -6,6 +6,7 @@
 #include <util/cmd.h>
 #include <util/types.h>
 #include <readline.h>
+#include <errno.h>
 
 #include "service.h"
 #include "server.h"
@@ -59,27 +60,41 @@ static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exi
 static int cmd_service(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
 	if(!strcmp(argv[1], "add")) {
 		int i = 2;
-		uint8_t protocol = 0;
-		uint32_t addr = 0;
-		uint16_t port = 0;
+		Interface* service_interface;
+		//Interface* private_interface[16];
+		uint8_t out_port[16];
+		uint8_t out_port_count = 0;
 		uint8_t schedule = LB_SCHEDULE_ROUND_ROBIN;
-		uint8_t ni_in = 0;
-		uint8_t ni_out[16];
-		uint8_t ni_out_count;
 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t")) {
 				i++;
-				protocol = IP_PROTOCOL_TCP;
-				addr = str_to_adr(argv[i]);
-				port = str_to_port(argv[i]);
+				uint8_t protocol = IP_PROTOCOL_TCP;
+				uint32_t addr = str_to_adr(argv[i]);
+				uint16_t port = str_to_port(argv[i]);
+				i++;
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
+
+				service_interface = interface_create(protocol, addr, port, ni_num);
 
 				continue;
 			} else if(!strcmp(argv[i], "-u")) {
 				i++;
-				protocol = IP_PROTOCOL_UDP;
-				addr = str_to_adr(argv[i]);
-				port = str_to_port(argv[i]);
+				uint8_t protocol = IP_PROTOCOL_UDP;
+				uint32_t addr = str_to_adr(argv[i]);
+				uint16_t port = str_to_port(argv[i]);
+				i++;
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
+
+				service_interface = interface_create(protocol, addr, port, ni_num);
 
 				continue;
 			} else if(!strcmp(argv[i], "-s")) {
@@ -90,18 +105,10 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					return i;
 
 				continue;
-			} else if(!strcmp(argv[i], "-in")) {
-				i++;
-				if(is_uint8(argv[i]))
-					ni_in = parse_uint8(argv[i]);
-				else
-					return i;
-
-				continue;
 			} else if(!strcmp(argv[i], "-out")) {
 				i++;
-				if(is_uint64(argv[i]))
-					ni_out[ni_out_count++] = parse_uint64(argv[i]);
+				if(is_uint16(argv[i]))
+					out_port[out_port_count++] = parse_uint16(argv[i]);
 				else
 					return i;
 
@@ -110,48 +117,56 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				return i;
 		}
 			
-		service_add(protocol, addr, port, schedule, ni_in, ni_out, ni_out_count);
+		//service_add(protocol, addr, port, schedule, ni_in, ni_out, ni_out_count);
+		Service* service = service_alloc(service_interface, out_port, out_port_count, schedule);
+		if(service == NULL) {
+			printf("Can'nt create service : %d\n", errno);
+			return -1;
+		}
+		service_add(service_interface->ni, service);
 
 		return 0;
 	} else if(!strcmp(argv[1], "delete")) {
 		int i = 2;
 		bool is_force = false;
-		uint8_t protocol = 0;
-		uint32_t addr = 0;
-		uint16_t port = 0;
 		uint64_t wait = 0;
-		uint8_t ni_in = 0;
-		NetworkInterface* ni = NULL;
+		Service* service = NULL;
 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t")) {
 				i++;
-				protocol = IP_PROTOCOL_TCP;
-				addr = str_to_adr(argv[i]);
-				port = str_to_port(argv[i]);
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
+
+				NetworkInterface* ni = ni_get(ni_num);
+				if(ni == NULL)
+					return i;
+
+				service = service_get(ni);
 
 				continue;
 			} else if(!strcmp(argv[i], "-u")) {
 				i++;
-				protocol = IP_PROTOCOL_UDP;
-				addr = str_to_adr(argv[i]);
-				port = str_to_port(argv[i]);
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
 
+				NetworkInterface* ni = ni_get(ni_num);
+				if(ni == NULL)
+					return i;
+
+				service = service_get(ni);
 				continue;
 			} else if(!strcmp(argv[i], "-w")) {
 				i++;
 				if(is_uint64(argv[i]))
 					wait = parse_uint64(argv[i]);
 				else
-					return i;
-
-				continue;
-			} else if(!strcmp(argv[i], "-in")) {
-				i++;
-				if(is_uint8(argv[i])) {
-					ni_in = parse_uint8(argv[i]);
-					ni = ni_get(ni_in);
-				} else
 					return i;
 
 				continue;
@@ -162,12 +177,6 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				return i;
 		}
 
-		if(ni == NULL) {
-			printf("Can'nt found NetworkInterface\n");
-			return -1;
-		}
-
-		Service* service = service_found(ni, protocol, addr, port);
 		if(service == NULL) {
 			printf("Can'nt found Service\n");
 			return -1;
@@ -193,32 +202,54 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 static int cmd_server(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
 	if(!strcmp(argv[1], "add")) {
 		int i = 2;
-		uint8_t protocol = 0;
-		uint32_t server_addr = 0;
-		uint16_t server_port = 0;
+		Interface* server_interface;
+		Interface* private_interface;
 		uint8_t mode = LB_MODE_NAT; //DEFAULT
-		uint8_t ni_num = 0;
 
-		void set_addr_port() {
-			server_addr = str_to_adr(argv[i]);
-			server_port = str_to_port(argv[i]);
-		}
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t")) {
 				i++;
-				protocol = IP_PROTOCOL_TCP;
-				set_addr_port();
+				uint8_t protocol = IP_PROTOCOL_TCP;
+				uint32_t addr = str_to_adr(argv[i]);
+				uint16_t port = str_to_port(argv[i]);
+				i++;
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
+
+				server_interface = interface_create(protocol, addr, port, ni_num);
+				i++;
+				if(!strcmp(argv[i], "-p")) {
+					i++;
+					uint32_t p_addr = str_to_adr(argv[i]);
+
+					private_interface = interface_create(protocol, p_addr, 0, ni_num);
+				} else
+					return i;
 				continue;
 			} else if(!strcmp(argv[i], "-u")) {
 				i++;
-				protocol = IP_PROTOCOL_UDP;
-				set_addr_port();
-				continue;
-			} else if(!strcmp(argv[i], "-p")) {
+				uint8_t protocol = IP_PROTOCOL_TCP;
+				uint32_t addr = str_to_adr(argv[i]);
+				uint16_t port = str_to_port(argv[i]);
 				i++;
-				if(is_uint8(argv[i]))
-					ni_num = parse_uint8(argv[i]);
-				else
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
+
+				server_interface = interface_create(protocol, addr, port, ni_num);
+
+				i++;
+				if(!strcmp(argv[i], "-p")) {
+					i++;
+					uint32_t p_addr = str_to_adr(argv[i]);
+
+					private_interface = interface_create(protocol, p_addr, 0, ni_num);
+				} else
 					return i;
 				continue;
 			} else if(!strcmp(argv[i], "-m")) {
@@ -238,7 +269,20 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 				return i;
 		}
 
-		if(!server_add(protocol, server_addr, server_port, mode, ni_num)) {
+		if(server_interface == NULL) {
+			printf("Server Interface is not exist\n");
+			return -1;
+		}
+		if(private_interface == NULL) {
+			printf("Private Interface is not exist\n");
+			return -1;
+		}
+		Server* server = server_alloc(server_interface, private_interface, mode);
+		if(server == NULL) {
+			printf("Can'nt add server: %d\n", errno);
+			return -1;
+		}
+		if(!server_add(server_interface->ni, server)) {
 			printf("Can'nt add server\n");
 			return -1;
 		}
@@ -246,34 +290,38 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 		return 0;
 	} else if(!strcmp(argv[1], "delete")) {
 		int i = 2;
-		uint8_t protocol = 0;
-		uint32_t server_addr = 0;
-		uint16_t server_port = 0;
-		uint8_t ni_num = 0;
 		bool is_force = false;
 		uint64_t wait = 0; //wait == 0 ;wait to disconnect all session.
+		Server* server = NULL;
 
-		void set_addr_port() {
-			server_addr = str_to_adr(argv[i]);
-			server_port = str_to_port(argv[i]);
-		}
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t")) {
 				i++;
-				protocol = IP_PROTOCOL_TCP;
-				set_addr_port();
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
+					return i;
+
+				NetworkInterface* ni = ni_get(ni_num);
+				if(ni == NULL)
+					return i;
+
+				server = server_get(ni);
 				continue;
 			} else if(!strcmp(argv[i], "-u")) {
 				i++;
-				protocol = IP_PROTOCOL_UDP;
-				set_addr_port();
-				continue;
-			} else if(!strcmp(argv[i], "-p")) {
-				i++;
-				if(!is_uint8(argv[i]))
+				uint8_t ni_num;
+				if(is_uint8(argv[i])) {
+					 ni_num = parse_uint8(argv[i]);
+				} else
 					return i;
 
-				ni_num = parse_uint8(argv[i]);
+				NetworkInterface* ni = ni_get(ni_num);
+				if(ni == NULL)
+					return i;
+
+				server = server_get(ni);
 				continue;
 			} else if(!strcmp(argv[i], "-f")) {
 				is_force = true;
@@ -289,20 +337,17 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 			} else
 				return i;
 		}
-		Server* server = server_found(protocol, server_addr, server_port, ni_num);
+
 		if(server == NULL) {
 			printf("Can'nt found server\n");
 			return -1;
 		}
-		bool result;
-		if(is_force) {
-			result = server_remove_force(server);
-		} else {
-			result = server_remove(server, wait);
-		}
 
-		if(!result)
-			printf("Delete fail\n");
+		if(is_force) {
+			server_remove_force(server);
+		} else {
+			server_remove(server, wait);
+		}
 
 		return 0;
 	} else if(!strcmp(argv[1], "list")) {
@@ -385,8 +430,10 @@ int main(int argc, char** argv) {
 			NetworkInterface* ni = ni_get(i);
 			if(ni_has_input(ni)) {
 				Packet* packet = ni_input(ni);
-				if(packet != NULL)
-					lb_process(packet);
+				if(packet == NULL)
+					continue;
+
+				lb_process(packet);
 			}
 
 		}

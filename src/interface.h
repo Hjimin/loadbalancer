@@ -8,6 +8,7 @@ typedef struct {
 	uint32_t addr;
 	uint16_t port;
 	NetworkInterface* ni;
+	uint8_t ni_num;
 } Interface;
 
 Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num);

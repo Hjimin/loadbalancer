@@ -1,106 +1,130 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <util/event.h>
-#include <net/ether.h>
+#include <util/map.h>
 #include <net/ni.h>
+#include <net/ether.h>
+#include <net/icmp.h>
+#include <net/checksum.h>
 #include <net/ip.h>
 #include <net/arp.h>
+#include <errno.h>
 
 #include "interface.h"
 #include "server.h"
 #include "session.h"
 #include "service.h"
 
-static Service* service_alloc(Interface* public_interface, uint8_t schedule, Interface* private_interfaces, uint8_t private_interface_count) {
+static Server* schedule_random(Service* service);
+static Server* schedule_round_robin(Service* service);
+
+Service* service_alloc(Interface* service_interface, uint8_t* out_port, uint8_t out_port_count, uint8_t schedule) {
 	Service* service = (Service*)malloc(sizeof(Service));
 	if(service == NULL) {
-		printf("Can'nt found Service\n");
+		//printf("Can'nt found Service\n");
+		errno = SERVICE_ALLOCATE_FAIL;
 		goto error_service_alloc;
 	}
 
-	service->public_interface = interface;
+	service->service_interface = service_interface;
+ //	service->private_interfaces = list_create(NULL);
+ //	if(service->private_interfaces == NULL) {
+ //		//printf("Can'nt create NetworkInterface Out List\n");
+ //		errno = SERVICE_LIST_CREATE_FAIL;
+ //		goto error_create_private_interface_list;
+ //	}
+ //	for(int i = 0; i < private_interface_count; i++) {
+ //		list_add(service->private_interfaces, private_interfaces[i]);
+ //	}
+	switch(schedule) {
+		case LB_SCHEDULE_ROUND_ROBIN:
+			service->get_server = schedule_round_robin;
+			break;
+		case LB_SCHEDULE_RANDOM:
+			service->get_server = schedule_random;
+			break;
+		default:
+			errno = -2;
+			goto error_schedule;
+	}
 	service->schedule = schedule;
-	service->timeout = DEFAULT_TIMEOUT;
+	service->robin = 0;
+	service->timeout = LB_SERVICE_DEFAULT_TIMEOUT;
 	service->state = LB_SERVICE_STATE_OK;
 
-	service->private_interfaces = list_create(NULL);
-	if(service->private_interface == NULL) {
-		printf("Can'nt create NetworkInterface Out List\n");
-		goto error_create_ni_out_list;
+	service->server_nis = list_create(NULL);
+	service->servers = list_create(NULL);
+	if(service->servers == NULL) {
+		errno = -SERVICE_LIST_CREATE_FAIL;
+		goto error_create_list;
 	}
-	for(int i = 0 ; i < private_count; i++) {
-		list_add(service->private_interfaces, private_interfaces[i]);
+	for(int i = 0 ; i < out_port_count; i++) {
+		NetworkInterface *ni = ni_get(out_port[i]);
+		if(ni == NULL) {
+			printf("Can'nt found NetworkInterface\n");
+			errno = -3;
+			goto error_create_server_list;
+		}
+		list_add(service->server_nis, ni);
+		Server* server = ni_config_get(ni, "pn.lb.server");
+		if(server == NULL)
+			continue;
+
+		list_add(service->servers, server);
+		list_add(server->services, service);
 	}
 
 	return service;
 
-free_interface:
-	if(interface != NULL)
-		interface_delete(interface);
+error_schedule:
+error_create_server_list:
+	list_destroy(service->servers);
+
+error_create_list:
+	free(service);
 
 error_service_alloc:
-	if(service != NULL)
-		free(service);
 
 	return NULL;
 }
 
 static bool service_free(Service* service) {
-	if(!map_is_empty(service->sessions)) {
-		printf("Session is not empty\n");
-		return false;
+	//delete from server
+	ListIterator iter;
+	list_iterator_init(&iter, service->servers);
+	while(list_iterator_has_next(&iter)) {
+		Server* server = list_iterator_next(&iter);
+		list_remove_data(server->services, service);
 	}
-	map_destroy(service->sessions);
+
+	list_destroy(service->servers);
 	free(service);
 
 	return true;
 }
 
-bool service_add(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t schedule, uint8_t ni_in, uint8_t* ni_out, uint8_t ni_out_count) {
-	NetworkInterface* ni = ni_get(ni_in);
-	if(ni == NULL) {
-		printf("NetworkInterface not found\n");
-		return false;
-	}
-	if(service_found(ni, protocol, addr, port) != NULL) {
-		printf("Already service exist\n");
-		return false;
-	}
-
-	Service* service = service_alloc(protocol, addr, port, schedule, ni_in, ni_out, ni_out_count);
-	if(service == NULL) {
-		printf("Can'nt add Service\n");
-		return false;
-	}
+bool service_add(NetworkInterface* ni, Service* service) {
+	ni_config_put(ni, "pn.lb.service", service);
+	ni_config_put(ni, "ip", (void*)(uint64_t)service->service_interface->addr);
 
 	return true;
 }
 
-bool service_is_empty(NetworkInterface* ni) {
-	Map* services = ni_config_get(ni, "pn.lb.services");
-
-	if(map_is_empty(services))
-		return true;
-	else
-		return false;
+Service* service_get(NetworkInterface* ni) {
+	return ni_config_get(ni, "pn.lb.service");
 }
 
 void service_is_remove_grace(Service* service) {
 	if(service->state == LB_SERVICE_STATE_OK)
 		return;
 
-	if(map_is_empty(service->sessions)) { //none session
+	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	if(map_is_empty(sessions)) { //none session
 		if(service->event_id != 0)
 			event_timer_remove(service->event_id);
 
 		service_remove_force(service);
 	}
-}
-
-Service* service_found(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
-	Map* services = ni_config_get(ni, "pn.lb.services");
-
-	return map_get(services, (void*)((uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port));
 }
 
 bool service_remove(Service* service, uint64_t wait) {
@@ -110,7 +134,8 @@ bool service_remove(Service* service, uint64_t wait) {
 		return false;
 	}
 
-	if(map_is_empty(service->sessions)) { //none session
+	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	if(map_is_empty(sessions)) { //none session
 		service_remove_force(service);
 
 		return true;
@@ -133,10 +158,10 @@ bool service_remove_force(Service* service) {
 
 	service->state = LB_SERVICE_STATE_REMOVING;
 
-	if(map_is_empty(service->sessions)) {
-		Map* services = ni_config_get(service->ni, "pn.lb.services");
-		if(!map_remove(services, (void*)((uint64_t)service->protocol << 48 | (uint64_t)service->addr << 16 | (uint64_t)service->port)))
-			printf("Can'nt remove service\n");
+	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	if(map_is_empty(sessions)) {
+		Interface* service_interface = service->service_interface;
+		ni_config_remove(service_interface->ni, "pn.lb.service");
 		service_free(service);
 	}
 
@@ -176,38 +201,74 @@ void service_dump() {
 	void print_session_count(Map* sessions) {
 		printf("%d\t", map_size(sessions));
 	}
+	void print_server_count(List* servers) {
+		printf("%d\t", list_size(servers));
+	}
 
 
-	printf("State\t\tProtocol\tAddr:Port\t\tSchedule\tNIC\tSession\n");
+	printf("State\t\tProtocol\tAddr:Port\t\tSchedule\tNIC\tSession\tServer\n");
 	int count = ni_count();
 	for(int i = 0; i < count; i++) {
 		NetworkInterface* ni = ni_get(i);
 		if(ni == NULL)
 			continue;
-		Map* services = ni_config_get(ni, "pn.lb.services");
-		if(services == NULL) {
-			printf("Can'nt found services");
+		Service* service = ni_config_get(ni, "pn.lb.service");
+		if(service == NULL) {
+			printf("Can'nt found service");
 			continue;
 		}
-
-		MapIterator iter;
-		map_iterator_init(&iter, services);
-		while(map_iterator_has_next(&iter)) {
-			MapEntry* entry = map_iterator_next(&iter);
-			Service* service = entry->data;
-			if(service == NULL) {
-				printf("Can'nt found service");
-				continue;
-			}
-				
-			print_state(service->state);
-			print_protocol(service->protocol);
-			print_addr_port(service->addr, service->port);
-			print_schedule(service->schedule);
-			print_ni_num(service->ni_in);
-			print_session_count(service->sessions);
-			printf("\n");
-		}
+			
+		print_state(service->state);
+		print_protocol(service->service_interface->protocol);
+		print_addr_port(service->service_interface->addr, service->service_interface->port);
+		print_schedule(service->schedule);
+		print_ni_num(service->service_interface->ni_num);
+		Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+		print_session_count(sessions);
+		print_server_count(service->servers);
+		printf("\n");
 	}
 }
 
+static Server* schedule_round_robin(Service* service) {
+	uint32_t count = list_size(service->servers);
+	if(count == 0)
+		return NULL; 
+	uint32_t index = (service->robin++) % count;
+
+	Server* server = list_get(service->servers, index);
+	while(server->state != LB_SERVER_STATE_OK) {
+		uint32_t _index = (service->robin++) % count;
+		if(index == _index)
+			return NULL;
+
+		server = list_get(service->servers, _index);
+	}
+	return server;
+}
+
+static Server* schedule_random(Service* service) {
+	inline uint64_t cpu_tsc() {
+		uint64_t time;
+		uint32_t* p = (uint32_t*)&time;
+		asm volatile("rdtsc" : "=a"(p[0]), "=d"(p[1]));
+		
+		return time;
+	}
+
+	uint32_t count = list_size(service->servers);
+	if(count == 0)
+		return NULL;
+
+	uint32_t random_num = cpu_tsc() % count;
+
+	Server* server = list_get(service->servers, random_num);
+	while(server->state != LB_SERVER_STATE_OK) {
+		uint32_t _random_num = cpu_tsc() % count;
+		if(random_num == _random_num)
+			return NULL;
+
+		server = list_get(service->servers, _random_num);
+	}
+	return server;
+}

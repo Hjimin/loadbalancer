@@ -13,6 +13,7 @@ Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint
 	interface->addr = addr;
 	interface->port = port;
 	interface->ni = ni;
+	interface->ni_num = ni_num;
 
 	return interface;
 
