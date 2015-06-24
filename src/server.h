@@ -15,18 +15,21 @@
 
 typedef struct{
 	Interface*	server_interface;
-	Interface*	private_interface;
 
 	uint8_t		state;
 	uint8_t		mode;
 	uint64_t	event_id;
 
 	List*		services;
+	Map*		sessions;
 }Server;
 
-Server* server_alloc(Interface* server_interface, Interface* private_interface, uint8_t mode);
+bool server_arp_process(Packet* packet);
+uint64_t server_arp_get_mac(NetworkInterface* ni, uint32_t saddr, uint32_t daddr);
+bool server_icmp_process(Packet* packet);
+Server* server_alloc(Interface* server_interface, uint8_t mode);
 bool server_free(Server* server);
-Server* server_get(NetworkInterface* ni);
+Server* server_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
 bool server_add(NetworkInterface* ni, Server* server);
 
 bool server_remove(Server* server, uint64_t wait);

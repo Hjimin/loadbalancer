@@ -23,13 +23,13 @@ typedef struct Service{
 	uint64_t	timeout;
 	uint64_t	event_id;
 
-	List*		server_nis;
+	Map*		private_interfaces;
 	List*		servers;
 
 	Server* 	(*get_server)(struct Service*);
 } Service;
 
-Service* service_alloc(Interface* public_interface, uint8_t* out_port, uint8_t out_port_count, uint8_t schedule);
+Service* service_alloc(Interface* public_interface, Interface** private_interface, uint8_t private_interface_count, uint8_t schedule);
 bool service_add(NetworkInterface* ni, Service* service);
 bool service_is_empty(NetworkInterface* ni);
 Service* service_get(NetworkInterface* ni);

@@ -22,3 +22,62 @@ Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint
 void interface_delete(Interface* interface) {
 	free(interface);
 }
+
+uint16_t interface_tcp_port_alloc(Interface* interface) {
+	Map* ports = interface->tcp_ports;
+	if(!ports) {
+		ports = map_create(4096, NULL, NULL, NULL);
+	}
+	
+	uint16_t port = interface->tcp_next_port;
+
+	if(port < 49152)
+		port = 49152;
+	
+	while(map_contains(ports, (void*)(uint64_t)port)) {
+		if(++port < 49152)
+			port = 49152;
+	}	
+	
+	map_put(ports, (void*)(uint64_t)port, (void*)(uint64_t)port);
+	interface->tcp_next_port = port + 1;
+	
+	return port;
+}
+
+void interface_tcp_port_free(Interface* interface, uint16_t port) {
+	Map* ports = interface->tcp_ports;
+	if(!ports)
+		return;
+	
+	map_remove(ports, (void*)(uint64_t)port);
+}
+
+uint16_t interface_udp_port_alloc(Interface* interface) {
+	Map* ports = interface->udp_ports;
+	if(!ports) {
+		ports = map_create(4096, NULL, NULL, NULL);
+	}
+	
+	uint16_t port = interface->udp_next_port;
+	if(port < 49152)
+		port = 49152;
+	
+	while(map_contains(ports, (void*)(uint64_t)port)) {
+		if(++port < 49152)
+			port = 49152;
+	}	
+	
+	map_put(ports, (void*)(uint64_t)port, (void*)(uint64_t)port);
+	interface->udp_next_port = port + 1;
+	
+	return port;
+}
+
+void interface_udp_port_free(Interface* interface, uint16_t port) {
+	Map* ports = interface->udp_ports;
+	if(!ports)
+		return;
+	
+	map_remove(ports, (void*)(uint64_t)port);
+}

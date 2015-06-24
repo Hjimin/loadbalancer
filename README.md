@@ -25,9 +25,9 @@
 			-o -- Time out of session(micro second) default: 30000000
 
 	EXAMPLES 1
-		service add -t 192.168.10.100:80 -s rr -o 40000000
-		server add -t 192.168.10.100:80 -r 192.168.100.100:80 -m nat
-		server add -t 192.168.10.100:80 -r 192.168.100.101:80 -m nat
+		service add -t 192.168.10.100:80 -s rr -o 40000000 -p 0
+		server add -t 192.168.10.100:80 -r 192.168.100.100:80 -m nat -p 1
+		server add -t 192.168.10.100:80 -r 192.168.100.101:80 -m nat -p 1
 		server add -t 192.168.10.100:80 -r 192.168.100.102:80 -m nat
 		server add -t 192.168.10.100:80 -r 192.168.100.103:80 -m nat
 		service list

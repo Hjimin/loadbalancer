@@ -28,6 +28,18 @@ int lb_ginit() {
 			return -1;
 		}
 		ni_config_put(ni, "pn.lb.sessions", sessions);
+
+		Map* servers = map_create(4096, NULL, NULL, NULL);
+		if(servers == NULL) {
+			return -1;
+		}
+		ni_config_put(ni, "pn.lb.servers", servers);
+
+		List* private_interfaces = list_create(NULL);
+		if(private_interfaces == NULL) {
+			return -1;
+		}
+		ni_config_put(ni, "pn.lb.private_interfaces", private_interfaces);
 	}
 
 	return 0;
@@ -87,7 +99,6 @@ static bool process_service(Packet* packet) {
 		Session* session = session_get_from_service(ni, protocol, saddr, sport);
 		if(!session) {
 			session = session_alloc(ni, protocol, saddr, sport, daddr, dport);
-			printf("session alloc");
 		}
 	
 		if(session == NULL) {
@@ -107,13 +118,14 @@ static bool process_service(Packet* packet) {
 static bool process_server(Packet* packet) {
 	NetworkInterface* ni = packet->ni;
 	
-	if(!server_get(ni))
+	List* private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+	if(list_is_empty(private_interfaces))
 		return false;
 
-	if(arp_process(packet))
+	if(server_arp_process(packet))
 		return true;
 	
-	if(icmp_process(packet))
+	if(server_icmp_process(packet))
 		return true;
 	
 	Ether* ether = (Ether*)(packet->buffer + packet->start);

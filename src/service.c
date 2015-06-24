@@ -18,7 +18,7 @@
 static Server* schedule_random(Service* service);
 static Server* schedule_round_robin(Service* service);
 
-Service* service_alloc(Interface* service_interface, uint8_t* out_port, uint8_t out_port_count, uint8_t schedule) {
+Service* service_alloc(Interface* service_interface, Interface** private_interfaces, uint8_t private_interface_count, uint8_t schedule) {
 	Service* service = (Service*)malloc(sizeof(Service));
 	if(service == NULL) {
 		//printf("Can'nt found Service\n");
@@ -52,34 +52,34 @@ Service* service_alloc(Interface* service_interface, uint8_t* out_port, uint8_t 
 	service->timeout = LB_SERVICE_DEFAULT_TIMEOUT;
 	service->state = LB_SERVICE_STATE_OK;
 
-	service->server_nis = list_create(NULL);
+	service->private_interfaces = map_create(4096, NULL, NULL, NULL);
 	service->servers = list_create(NULL);
 	if(service->servers == NULL) {
 		errno = -SERVICE_LIST_CREATE_FAIL;
 		goto error_create_list;
 	}
-	for(int i = 0 ; i < out_port_count; i++) {
-		NetworkInterface *ni = ni_get(out_port[i]);
-		if(ni == NULL) {
-			printf("Can'nt found NetworkInterface\n");
-			errno = -3;
-			goto error_create_server_list;
-		}
-		list_add(service->server_nis, ni);
-		Server* server = ni_config_get(ni, "pn.lb.server");
-		if(server == NULL)
+	for(int i = 0 ; i < private_interface_count; i++) {
+		NetworkInterface* ni = private_interfaces[i]->ni;
+		map_put(service->private_interfaces, ni, private_interfaces[i]);
+
+		Map* servers = ni_config_get(ni, "pn.lb.servers");
+		List* _private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+		if(map_is_empty(servers))
 			continue;
 
-		list_add(service->servers, server);
-		list_add(server->services, service);
+		MapIterator iter;
+		map_iterator_init(&iter, servers);
+		while(map_iterator_has_next(&iter)) {
+			MapEntry* entry = map_iterator_next(&iter);
+			Server* server = entry->data;
+			list_add(service->servers, server);
+			list_add(_private_interfaces, private_interfaces[i]);
+		}
 	}
 
 	return service;
 
 error_schedule:
-error_create_server_list:
-	list_destroy(service->servers);
-
 error_create_list:
 	free(service);
 
@@ -190,10 +190,17 @@ void service_dump() {
 				(addr >> 8) & 0xff, addr & 0xff, port);
 	}
 	void print_schedule(uint8_t schedule) {
-		if(schedule == LB_SCHEDULE_ROUND_ROBIN) {
-			printf("Round-Robin\t");
-		} else
-			printf("Unnowkn\t");
+		switch(schedule) {
+			case LB_SCHEDULE_ROUND_ROBIN:
+				printf("Round-Robin\t");
+				break;
+			case LB_SCHEDULE_RANDOM:
+				printf("Random\t\t");
+				break;
+			default:
+				printf("Unnowkn\t");
+				break;
+		}
 	}
 	void print_ni_num(uint8_t ni_num) {
 		printf("%d\t", ni_num);
@@ -214,7 +221,6 @@ void service_dump() {
 			continue;
 		Service* service = ni_config_get(ni, "pn.lb.service");
 		if(service == NULL) {
-			printf("Can'nt found service");
 			continue;
 		}
 			

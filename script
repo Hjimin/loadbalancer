@@ -1,13 +1,18 @@
 connect 192.168.100.254
-$vmid = create core: 1 memory: 0x1000000 storage: 0x200000 nic: mac: 0 port: 0 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 nic: mac: 0 port: 1 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 args: hello world
+$vmid = create core: 1 memory: 0x1000000 storage: 0x200000 nic: mac: 0 port: 0 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 nic: mac: 0 port: 0 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 nic: mac: 0 port: 0 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 nic: mac: 0 port: 1 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 nic: mac: 0 port: 1 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 nic: mac: 0 port: 1 ibuf: 1024 obuf: 1024 iband: 1000000000 oband: 1000000000 pool: 0x400000 args: hello world
 upload $vmid main
 start $vmid
 
-stdin $vmid 0 "service add -t 192.168.100.100:80 -s rr -p 0"
-stdin $vmid 0 "server add -t 192.168.100.100:80 -p 0 -r 192.168.100.201:8080 -p 1 -m nat"
-stdin $vmid 0 "server add -t 192.168.100.100:80 -p 0 -r 192.168.100.201:8081 -p 1 -m nat"
-stdin $vmid 0 "server add -t 192.168.100.100:80 -p 0 -r 192.168.100.201:8082 -p 1 -m nat"
-stdin $vmid 0 "server add -t 192.168.100.100:80 -p 0 -r 192.168.100.201:8083 -p 1 -m nat"
-stdin $vmid 0 "server add -t 192.168.100.100:80 -p 0 -r 192.168.100.201:8084 -p 1 -m nat"
+stdin $vmid 0 "service add -t 192.168.100.100:80 0 -s rr -out 192.168.100.20 1"
+stdin $vmid 0 "server add -t 192.168.100.201:8080 1 -m nat"
+stdin $vmid 0 "server add -t 192.168.100.201:8081 1 -m nat"
+stdin $vmid 0 "server add -t 192.168.100.201:8082 1 -m nat"
+stdin $vmid 0 "server add -t 192.168.100.201:8083 1 -m nat"
+#stdin $vmid 0 "server add -t 192.168.100.201:8084 2 -m nat"
+stdin $vmid 0 "server list"
 stdin $vmid 0 "service list"
-stdin $vmid 0 "server list -t 192.168.100.100:80 -p 0"
+stdin $vmid 0 "service add -t 192.168.100.101:80 2 -s r -out 192.168.100.21 1"
+stdin $vmid 0 "service list"
+
+#stdin $vmid 0 "service delete -t 192.168.100.100:80 0"
+#stdin $vmid 0 "server delete -t 192.168.100.201:8080 1"
