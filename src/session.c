@@ -26,6 +26,7 @@ static void session_recharge(Session* session) {
 	bool session_free_event(void* context) {
 		printf("session free event\n");
 		Session* session = context;
+		session->event_id = 0;
 		session_free(session);
 
 		return false;
@@ -75,7 +76,6 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 	if(private_interface == NULL) {
 		goto error_get_private_interface;
 	}
-	session->private_interface = private_interface;
 
 	switch(server->mode) {
 		case LB_MODE_NAT:;
@@ -84,6 +84,7 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 			else if(protocol == IP_PROTOCOL_UDP) {
 				session->private_interface = interface_create(private_interface->protocol, private_interface->addr, interface_udp_port_alloc(private_interface), private_interface->ni_num);
 			}
+			printf("here\n");
 			session->loadbalancer_pack = nat_pack;
 			session->session_free = nat_session_free;
 			break;
@@ -96,22 +97,28 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 			session->loadbalancer_pack = dr_pack;
 			session->session_free = dr_session_free;
 			break;
+		default:
+			printf("error\n");
+			return NULL;
 	}
 
 	session->fin = false;
 
 	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
 	if(!map_put(sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport), session)) {
+		printf("error session map put1\n");
 		goto error_session_map_put1;
 	}
 
 	sessions = ni_config_get(server->server_interface->ni, "pn.lb.sessions");
 	uint64_t key2 = (uint64_t)session->private_interface->protocol << 48 | (uint64_t)session->private_interface->addr << 16 | (uint64_t)session->private_interface->port;
 	if(!map_put(sessions, (void*)key2, session)) {
+		printf("error session map put2\n");
 		goto error_session_map_put2;
 	}
 
 	if(!map_put(server->sessions, (void*)key2, session)) {
+		printf("error session map put3\n");
 		goto error_session_map_put3;
 	}
 
@@ -133,6 +140,7 @@ error_allocate_session:
 }
 
 Session* session_get_from_service(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport) {
+	printf("session get from service\n");
 	Map* sessions = ni_config_get(ni, "pn.lb.sessions");
 	Session* session = map_get(sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport));
 
@@ -143,6 +151,7 @@ Session* session_get_from_service(NetworkInterface* ni, uint8_t protocol, uint32
 }
 
 bool session_free(Session* session) {
+	printf("session free\n");
 	if(session->event_id != 0) {
 		event_timer_remove(session->event_id);
 		session->event_id = 0;
@@ -167,18 +176,23 @@ bool session_free(Session* session) {
 		goto error_session_free3;
 	}
 
+	printf("hello\n");
 	server_is_remove_grace(session->server);
 	service_is_remove_grace(session->service);
+	printf("world\n");
 
 	session->session_free(session);
+	printf("aaaaaaaaa\n");
 
 	free(session);
+	printf("qwer\n");
 
 	return true;
 
 error_session_free3:
 error_session_free2:
 error_session_free1:
+	printf("asdf\n");
 	return false;
 }
 
@@ -205,6 +219,7 @@ bool session_set_fin(Session* session) {
 		return false;
 	}
 		
+	printf("session set fin\n");
 	if(session->event_id)
 		event_timer_remove(session->event_id);
 
@@ -222,7 +237,9 @@ static bool nat_session_free(Session* session) {
 	Interface* private_interface = session->private_interface;
 	switch(private_interface->protocol) {
 		case IP_PROTOCOL_TCP:
+			printf("here?\n");
 			interface_tcp_port_free(private_interface, private_interface->port);
+			printf("here end\n");
 			break;
 		case IP_PROTOCOL_UDP:
 			interface_udp_port_free(private_interface, private_interface->port);
@@ -265,10 +282,12 @@ static bool nat_pack(Session* session, Packet* packet, uint8_t direct) {
 
 					tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 					if(session->fin && tcp->ack) {
-						event_timer_remove(session->event_id);
+						if(session->event_id != 0) {
+							event_timer_remove(session->event_id);
+							session->event_id = 0;
+						}
 						session_free(session);
 					}
-
 					return true;
 				case IP_PROTOCOL_UDP:;
 					UDP* udp = (UDP*)ip->body;

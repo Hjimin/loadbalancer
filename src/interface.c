@@ -12,6 +12,10 @@ Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint
 	interface->protocol = protocol;
 	interface->addr = addr;
 	interface->port = port;
+	interface->tcp_ports = NULL;
+	interface->tcp_next_port = 0;
+	interface->udp_ports = NULL;
+	interface->udp_next_port = 0;
 	interface->ni = ni;
 	interface->ni_num = ni_num;
 
@@ -27,6 +31,7 @@ uint16_t interface_tcp_port_alloc(Interface* interface) {
 	Map* ports = interface->tcp_ports;
 	if(!ports) {
 		ports = map_create(4096, NULL, NULL, NULL);
+		interface->tcp_ports = ports;
 	}
 	
 	uint16_t port = interface->tcp_next_port;
@@ -57,6 +62,7 @@ uint16_t interface_udp_port_alloc(Interface* interface) {
 	Map* ports = interface->udp_ports;
 	if(!ports) {
 		ports = map_create(4096, NULL, NULL, NULL);
+		interface->udp_ports = ports;
 	}
 	
 	uint16_t port = interface->udp_next_port;

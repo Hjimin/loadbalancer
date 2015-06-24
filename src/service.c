@@ -90,13 +90,14 @@ error_service_alloc:
 
 static bool service_free(Service* service) {
 	//delete from server
-	ListIterator iter;
-	list_iterator_init(&iter, service->servers);
-	while(list_iterator_has_next(&iter)) {
-		Server* server = list_iterator_next(&iter);
-		list_remove_data(server->services, service);
-	}
+ //	ListIterator iter;
+ //	list_iterator_init(&iter, service->servers);
+ //	while(list_iterator_has_next(&iter)) {
+ //		Server* server = list_iterator_next(&iter);
+ //		list_remove_data(server->services, service);
+ //	}
 
+	map_destroy(service->private_interfaces);
 	list_destroy(service->servers);
 	free(service);
 
@@ -159,11 +160,23 @@ bool service_remove_force(Service* service) {
 	service->state = LB_SERVICE_STATE_REMOVING;
 
 	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
-	if(map_is_empty(sessions)) {
-		Interface* service_interface = service->service_interface;
-		ni_config_remove(service_interface->ni, "pn.lb.service");
-		service_free(service);
+	if(!map_is_empty(sessions)) {
 	}
+
+	Map* private_interfaces = service->private_interfaces;
+	MapIterator iter;
+	map_iterator_init(&iter, private_interfaces);
+	while(map_iterator_has_next(&iter)) {
+		MapEntry* entry = map_iterator_next(&iter);
+		Interface* private_interface = entry->data;
+		NetworkInterface* ni = private_interface->ni;
+		List* _private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+		list_remove_data(_private_interfaces, private_interface);
+	}
+
+	Interface* service_interface = service->service_interface;
+	ni_config_remove(service_interface->ni, "pn.lb.service");
+	service_free(service);
 
 	return true;
 }
@@ -240,6 +253,7 @@ static Server* schedule_round_robin(Service* service) {
 	uint32_t count = list_size(service->servers);
 	if(count == 0)
 		return NULL; 
+
 	uint32_t index = (service->robin++) % count;
 
 	Server* server = list_get(service->servers, index);

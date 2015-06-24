@@ -14,5 +14,5 @@ stdin $vmid 0 "service list"
 stdin $vmid 0 "service add -t 192.168.100.101:80 2 -s r -out 192.168.100.21 1"
 stdin $vmid 0 "service list"
 
-#stdin $vmid 0 "service delete -t 192.168.100.100:80 0"
+#stdin $vmid 0 "service delete 0"
 #stdin $vmid 0 "server delete -t 192.168.100.201:8080 1"

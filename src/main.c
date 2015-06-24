@@ -41,7 +41,6 @@ static uint16_t str_to_port(char* argv) {
 
 static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
 	if(argc == 1) {
-		//TODO grace
 		is_continue = false;
 		return 0;
 	}
@@ -63,8 +62,6 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		Interface* service_interface;
 		Interface* private_interface[16];
 		uint8_t private_interface_count = 0;
-		//uint8_t out_port[16];
-		//uint8_t out_port_count = 0;
 		uint8_t schedule = LB_SCHEDULE_ROUND_ROBIN;
 		uint8_t protocol;
 
@@ -125,7 +122,6 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				return i;
 		}
 			
-		//service_add(protocol, addr, port, schedule, ni_in, ni_out, ni_out_count);
 		Service* service = service_alloc(service_interface, private_interface, private_interface_count, schedule);
 		if(service == NULL) {
 			printf("Can'nt create service : %d\n", errno);
@@ -140,37 +136,20 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		uint64_t wait = 0;
 		Service* service = NULL;
 
+		i++;
+		uint8_t ni_num;
+		if(is_uint8(argv[i])) {
+			 ni_num = parse_uint8(argv[i]);
+		} else
+			return i;
+
+		NetworkInterface* ni = ni_get(ni_num);
+		if(ni == NULL)
+			return i;
+		service = service_get(ni);
+
 		for(;i < argc; i++) {
-			if(!strcmp(argv[i], "-t")) {
-				i++;
-				uint8_t ni_num;
-				if(is_uint8(argv[i])) {
-					 ni_num = parse_uint8(argv[i]);
-				} else
-					return i;
-
-				NetworkInterface* ni = ni_get(ni_num);
-				if(ni == NULL)
-					return i;
-
-				service = service_get(ni);
-
-				continue;
-			} else if(!strcmp(argv[i], "-u")) {
-				i++;
-				uint8_t ni_num;
-				if(is_uint8(argv[i])) {
-					 ni_num = parse_uint8(argv[i]);
-				} else
-					return i;
-
-				NetworkInterface* ni = ni_get(ni_num);
-				if(ni == NULL)
-					return i;
-
-				service = service_get(ni);
-				continue;
-			} else if(!strcmp(argv[i], "-w")) {
+			if(!strcmp(argv[i], "-w")) {
 				i++;
 				if(is_uint64(argv[i]))
 					wait = parse_uint64(argv[i]);

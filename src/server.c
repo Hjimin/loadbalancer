@@ -214,9 +214,9 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	server->mode = mode;
 	server->event_id = 0;
 
-	server->services = list_create(NULL);
-	if(server->services == NULL)
-		goto error_list_create;
+ //	server->services = list_create(NULL);
+ //	if(server->services == NULL)
+ //		goto error_list_create;
 	server->sessions = map_create(4096, NULL, NULL, NULL);
 	if(server->sessions == NULL)
 		goto error_map_create;
@@ -224,22 +224,21 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	return server;
 
 error_map_create:
-	list_destroy(server->services);
-error_list_create:
-	free(server);
+ //	list_destroy(server->services);
+ //error_list_create: free(server);
 error_server_alloc:
 	return NULL;
 }
 
 bool server_free(Server* server) {
-	ListIterator iter;
-	list_iterator_init(&iter, server->services);
-	while(list_iterator_has_next(&iter)) {
-		Service* service = list_iterator_next(&iter);
-		list_remove_data(service->servers, server);
-	}
+ //	ListIterator iter;
+ //	list_iterator_init(&iter, server->services);
+ //	while(list_iterator_has_next(&iter)) {
+ //		Service* service = list_iterator_next(&iter);
+ //		list_remove_data(service->servers, server);
+ //	}
 
-	list_destroy(server->services);
+ //	list_destroy(server->services);
 	free(server);
 
 	return true;
@@ -382,7 +381,6 @@ void server_dump() {
 	void print_session_count(Map* sessions) {
 		printf("%d\t", map_size(sessions));
 	}
-
 
 	printf("State\t\tAddr:Port\t\tMode\tNIC\tSessions\n");
 	uint8_t count = ni_count();

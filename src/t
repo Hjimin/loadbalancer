@@ -1,0 +1,207 @@
+diff --git a/script b/script
+index 32076e4..2fb8b53 100644
+--- a/script
++++ b/script
+@@ -14,5 +14,5 @@ stdin $vmid 0 "service list"
+ stdin $vmid 0 "service add -t 192.168.100.101:80 2 -s r -out 192.168.100.21 1"
+ stdin $vmid 0 "service list"
+ 
+-#stdin $vmid 0 "service delete -t 192.168.100.100:80 0"
++#stdin $vmid 0 "service delete 0"
+ #stdin $vmid 0 "server delete -t 192.168.100.201:8080 1"
+diff --git a/src/main.c b/src/main.c
+index 3d56b99..8ee4724 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -41,7 +41,6 @@ static uint16_t str_to_port(char* argv) {
+ 
+ static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
+ 	if(argc == 1) {
+-		//TODO grace
+ 		is_continue = false;
+ 		return 0;
+ 	}
+@@ -63,8 +62,6 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int
+ 		Interface* service_interface;
+ 		Interface* private_interface[16];
+ 		uint8_t private_interface_count = 0;
+-		//uint8_t out_port[16];
+-		//uint8_t out_port_count = 0;
+ 		uint8_t schedule = LB_SCHEDULE_ROUND_ROBIN;
+ 		uint8_t protocol;
+ 
+@@ -125,7 +122,6 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int
+ 				return i;
+ 		}
+ 			
+-		//service_add(protocol, addr, port, schedule, ni_in, ni_out, ni_out_count);
+ 		Service* service = service_alloc(service_interface, private_interface, private_interface_count, schedule);
+ 		if(service == NULL) {
+ 			printf("Can'nt create service : %d\n", errno);
+@@ -140,37 +136,20 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int
+ 		uint64_t wait = 0;
+ 		Service* service = NULL;
+ 
+-		for(;i < argc; i++) {
+-			if(!strcmp(argv[i], "-t")) {
+-				i++;
+-				uint8_t ni_num;
+-				if(is_uint8(argv[i])) {
+-					 ni_num = parse_uint8(argv[i]);
+-				} else
+-					return i;
+-
+-				NetworkInterface* ni = ni_get(ni_num);
+-				if(ni == NULL)
+-					return i;
+-
+-				service = service_get(ni);
+-
+-				continue;
+-			} else if(!strcmp(argv[i], "-u")) {
+-				i++;
+-				uint8_t ni_num;
+-				if(is_uint8(argv[i])) {
+-					 ni_num = parse_uint8(argv[i]);
+-				} else
+-					return i;
++		i++;
++		uint8_t ni_num;
++		if(is_uint8(argv[i])) {
++			 ni_num = parse_uint8(argv[i]);
++		} else
++			return i;
+ 
+-				NetworkInterface* ni = ni_get(ni_num);
+-				if(ni == NULL)
+-					return i;
++		NetworkInterface* ni = ni_get(ni_num);
++		if(ni == NULL)
++			return i;
++		service = service_get(ni);
+ 
+-				service = service_get(ni);
+-				continue;
+-			} else if(!strcmp(argv[i], "-w")) {
++		for(;i < argc; i++) {
++			if(!strcmp(argv[i], "-w")) {
+ 				i++;
+ 				if(is_uint64(argv[i]))
+ 					wait = parse_uint64(argv[i]);
+diff --git a/src/server.c b/src/server.c
+index a11c7bb..48c5552 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -214,9 +214,9 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
+ 	server->mode = mode;
+ 	server->event_id = 0;
+ 
+-	server->services = list_create(NULL);
+-	if(server->services == NULL)
+-		goto error_list_create;
++ //	server->services = list_create(NULL);
++ //	if(server->services == NULL)
++ //		goto error_list_create;
+ 	server->sessions = map_create(4096, NULL, NULL, NULL);
+ 	if(server->sessions == NULL)
+ 		goto error_map_create;
+@@ -224,22 +224,21 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
+ 	return server;
+ 
+ error_map_create:
+-	list_destroy(server->services);
+-error_list_create:
+-	free(server);
++ //	list_destroy(server->services);
++ //error_list_create: free(server);
+ error_server_alloc:
+ 	return NULL;
+ }
+ 
+ bool server_free(Server* server) {
+-	ListIterator iter;
+-	list_iterator_init(&iter, server->services);
+-	while(list_iterator_has_next(&iter)) {
+-		Service* service = list_iterator_next(&iter);
+-		list_remove_data(service->servers, server);
+-	}
+-
+-	list_destroy(server->services);
++ //	ListIterator iter;
++ //	list_iterator_init(&iter, server->services);
++ //	while(list_iterator_has_next(&iter)) {
++ //		Service* service = list_iterator_next(&iter);
++ //		list_remove_data(service->servers, server);
++ //	}
++
++ //	list_destroy(server->services);
+ 	free(server);
+ 
+ 	return true;
+diff --git a/src/server.h b/src/server.h
+index 1edfde3..3baa181 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -20,7 +20,7 @@ typedef struct{
+ 	uint8_t		mode;
+ 	uint64_t	event_id;
+ 
+-	List*		services;
++	//List*		services;
+ 	Map*		sessions;
+ }Server;
+ 
+diff --git a/src/service.c b/src/service.c
+index 0051e51..e792b52 100644
+--- a/src/service.c
++++ b/src/service.c
+@@ -90,13 +90,14 @@ error_service_alloc:
+ 
+ static bool service_free(Service* service) {
+ 	//delete from server
+-	ListIterator iter;
+-	list_iterator_init(&iter, service->servers);
+-	while(list_iterator_has_next(&iter)) {
+-		Server* server = list_iterator_next(&iter);
+-		list_remove_data(server->services, service);
+-	}
++ //	ListIterator iter;
++ //	list_iterator_init(&iter, service->servers);
++ //	while(list_iterator_has_next(&iter)) {
++ //		Server* server = list_iterator_next(&iter);
++ //		list_remove_data(server->services, service);
++ //	}
+ 
++	map_destroy(service->private_interfaces);
+ 	list_destroy(service->servers);
+ 	free(service);
+ 
+@@ -159,12 +160,24 @@ bool service_remove_force(Service* service) {
+ 	service->state = LB_SERVICE_STATE_REMOVING;
+ 
+ 	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+-	if(map_is_empty(sessions)) {
+-		Interface* service_interface = service->service_interface;
+-		ni_config_remove(service_interface->ni, "pn.lb.service");
+-		service_free(service);
++	if(!map_is_empty(sessions)) {
++	}
++
++	Map* private_interfaces = service->private_interfaces;
++	MapIterator iter;
++	map_iterator_init(&iter, private_interfaces);
++	while(map_iterator_has_next(&iter)) {
++		MapEntry* entry = map_iterator_next(&iter);
++		Interface* private_interface = entry->data;
++		NetworkInterface* ni = private_interface->ni;
++		List* _private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
++		list_remove_data(_private_interfaces, private_interface);
+ 	}
+ 
++	Interface* service_interface = service->service_interface;
++	ni_config_remove(service_interface->ni, "pn.lb.service");
++	service_free(service);
++
+ 	return true;
+ }
+ 

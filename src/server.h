@@ -20,7 +20,7 @@ typedef struct{
 	uint8_t		mode;
 	uint64_t	event_id;
 
-	List*		services;
+	//List*		services;
 	Map*		sessions;
 }Server;
 

@@ -56,6 +56,7 @@ void lb_loop() {
 
 static bool process_service(Packet* packet) {
 	NetworkInterface* ni = packet->ni;
+	printf("process service\n");
 
 	if(!service_get(ni))
 		return false;
@@ -66,6 +67,7 @@ static bool process_service(Packet* packet) {
 	if(icmp_process(packet))
 		return true;
 	
+	printf("1\n");
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
@@ -96,21 +98,28 @@ static bool process_service(Packet* packet) {
 				return false;
 		}
 
+		printf("2\n");
 		Session* session = session_get_from_service(ni, protocol, saddr, sport);
 		if(!session) {
+			printf("3\n");
 			session = session_alloc(ni, protocol, saddr, sport, daddr, dport);
 		}
 	
+		printf("4\n");
 		if(session == NULL) {
 			printf("session not found");
 			return false;
 		}
 
+		printf("5\n");
 		session->loadbalancer_pack(session, packet, SESSION_IN);
+		printf("6\n");
 		ni_output(session->server->server_interface->ni, packet);
+		printf("7\n");
 
 		return true;
 	}
+	printf("8\n");
 
 	return false;
 }
@@ -118,6 +127,7 @@ static bool process_service(Packet* packet) {
 static bool process_server(Packet* packet) {
 	NetworkInterface* ni = packet->ni;
 	
+	printf("process server\n");
 	List* private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
 	if(list_is_empty(private_interfaces))
 		return false;
@@ -128,6 +138,7 @@ static bool process_server(Packet* packet) {
 	if(server_icmp_process(packet))
 		return true;
 	
+	printf("1\n");
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
@@ -136,6 +147,7 @@ static bool process_server(Packet* packet) {
 		uint32_t daddr = endian32(ip->destination);
 		uint16_t dport;
 
+		printf("2\n");
 		switch(protocol) {
 			case IP_PROTOCOL_TCP:
 				;
@@ -151,16 +163,21 @@ static bool process_server(Packet* packet) {
 				return false;
 		}
 
+		printf("3\n");
 		Session* session = session_get_from_server(ni, protocol, daddr, dport);
-		if(session == NULL)
+		if(session == NULL) {
+			printf("4\n");
 			return false;
+		}
 
 		session->loadbalancer_pack(session, packet, SESSION_OUT);
 		ni_output(session->service->service_interface->ni, packet);
 
+		printf("5\n");
 		return true;
 	}
 	
+	printf("6\n");
 	return false;
 }
 
