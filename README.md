@@ -2,8 +2,8 @@
 
 # CLI
 	COMMAND BASIC FORMATS
-	[command] [protocol] [service address:port] [schedules method] [time out]
-	[command] [protocol] [service address:port] [server address:port] [forwarding method] [ni number]
+	[command] [protocol] [service address:port] [nic number] [schedules method]
+	[command] [protocol] [server address:port] [nic number] [forwarding method]
 
 	COMMANDS
 		service add -- Add Service.
@@ -11,33 +11,39 @@
 			list -- List of Service.
 		server	add -- Add Real Server to Service.
 			remove -- Remove Real Server from Service. (Default = grace)
-			list -- List of Real Server from Service.
+			list -- List of Real Server.
 
 	OPTIONS
 		PROTOCOLS
 			-t -- TCP
 			-u -- UDP
-		SCHEDULES
-			-rr -- Round Robin Algorithm.
+		SCHEDULE OPTIONS
+			rr	-- Round Robin(default).
+			r	-- Random.
+			min	-- Server that has min sessions.
+		MODE OPTIONS
+			nat	-- network address transration.
+			dnat	-- destination network address transration.
+			dr	-- direct routing.
 		OTHERS
-			-w -- How many time(micro seconds) wait to disconnect session. (if wait == 0, wait to disconnect all session)
 			-f -- Delete Force(not grace)
 			-o -- Time out of session(micro second) default: 30000000
 
 	EXAMPLES 1
-		service add -t 192.168.10.100:80 -s rr -o 40000000 -p 0
-		server add -t 192.168.10.100:80 -r 192.168.100.100:80 -m nat -p 1
-		server add -t 192.168.10.100:80 -r 192.168.100.101:80 -m nat -p 1
-		server add -t 192.168.10.100:80 -r 192.168.100.102:80 -m nat
-		server add -t 192.168.10.100:80 -r 192.168.100.103:80 -m nat
+		service add -t 192.168.10.100:80 0 -s rr -out 192.168.100.20 1
+		service add -t 192.168.10.100:80 1 -s rr -out 192.168.100.21 1
+		server add -t 192.168.10.201:8080 2 -m nat
+		server add -t 192.168.10.201:8081 2 -m nat
+		server add -t 192.168.10.201:8082 2 -m nat
+		server add -t 192.168.10.201:8083 2 -m nat
 		service list
-		server list -t 192.168.10.100:80
+		server list
 
 	EXAMPLES 2
-		server remove -t 192.168.10.100:80 -r 192.168.100.100:80 -m nat -f
-		server remove -t 192.168.10.100:80 -r 192.168.100.101:80 -m nat -f
-		server remove -t 192.168.10.100:80 -r 192.168.100.102:80 -m nat -w 100000
-		server remove -t 192.168.10.100:80 -r 192.168.100.103:80 -m nat 
-		service remove -t 192.168.10.100:80
+		server remove -t 192.168.10.201:8080 2
+		server remove -t 192.168.10.201:8081 2
+		server remove -t 192.168.10.201:8082 2
+		server remove -t 192.168.10.201:8083 2
+		service remove -t 192.168.10.100:80 0
 # License
 GPL2

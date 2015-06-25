@@ -8,34 +8,23 @@
 #include <net/checksum.h>
 #include <net/ip.h>
 #include <net/arp.h>
-#include <errno.h>
 
 #include "interface.h"
 #include "server.h"
 #include "session.h"
 #include "service.h"
 
-static Server* schedule_random(Service* service);
 static Server* schedule_round_robin(Service* service);
+static Server* schedule_random(Service* service);
+static Server* schedule_min(Service* service);
 
 Service* service_alloc(Interface* service_interface, Interface** private_interfaces, uint8_t private_interface_count, uint8_t schedule) {
 	Service* service = (Service*)malloc(sizeof(Service));
 	if(service == NULL) {
-		//printf("Can'nt found Service\n");
-		errno = SERVICE_ALLOCATE_FAIL;
 		goto error_service_alloc;
 	}
 
 	service->service_interface = service_interface;
- //	service->private_interfaces = list_create(NULL);
- //	if(service->private_interfaces == NULL) {
- //		//printf("Can'nt create NetworkInterface Out List\n");
- //		errno = SERVICE_LIST_CREATE_FAIL;
- //		goto error_create_private_interface_list;
- //	}
- //	for(int i = 0; i < private_interface_count; i++) {
- //		list_add(service->private_interfaces, private_interfaces[i]);
- //	}
 	switch(schedule) {
 		case LB_SCHEDULE_ROUND_ROBIN:
 			service->get_server = schedule_round_robin;
@@ -43,8 +32,10 @@ Service* service_alloc(Interface* service_interface, Interface** private_interfa
 		case LB_SCHEDULE_RANDOM:
 			service->get_server = schedule_random;
 			break;
+		case LB_SCHEDULE_MIN:
+			service->get_server = schedule_min;
+			break;
 		default:
-			errno = -2;
 			goto error_schedule;
 	}
 	service->schedule = schedule;
@@ -53,17 +44,21 @@ Service* service_alloc(Interface* service_interface, Interface** private_interfa
 	service->state = LB_SERVICE_STATE_OK;
 
 	service->private_interfaces = map_create(4096, NULL, NULL, NULL);
+	if(service->private_interfaces == NULL)
+		goto error_create_map;
+
 	service->servers = list_create(NULL);
-	if(service->servers == NULL) {
-		errno = -SERVICE_LIST_CREATE_FAIL;
+	if(service->servers == NULL)
 		goto error_create_list;
-	}
+
 	for(int i = 0 ; i < private_interface_count; i++) {
 		NetworkInterface* ni = private_interfaces[i]->ni;
 		map_put(service->private_interfaces, ni, private_interfaces[i]);
 
-		Map* servers = ni_config_get(ni, "pn.lb.servers");
 		List* _private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+		list_add(_private_interfaces, private_interfaces[i]);
+
+		Map* servers = ni_config_get(ni, "pn.lb.servers");
 		if(map_is_empty(servers))
 			continue;
 
@@ -73,15 +68,18 @@ Service* service_alloc(Interface* service_interface, Interface** private_interfa
 			MapEntry* entry = map_iterator_next(&iter);
 			Server* server = entry->data;
 			list_add(service->servers, server);
-			list_add(_private_interfaces, private_interfaces[i]);
 		}
 	}
 
 	return service;
 
-error_schedule:
 error_create_list:
+	if(service->private_interfaces != NULL)
+		map_destroy(service->private_interfaces);
+
+error_create_map:
 	free(service);
+error_schedule:
 
 error_service_alloc:
 
@@ -290,5 +288,28 @@ static Server* schedule_random(Service* service) {
 
 		server = list_get(service->servers, _random_num);
 	}
+	return server;
+}
+
+static Server* schedule_min(Service* service) {
+	uint32_t count = list_size(service->servers);
+	if(count == 0)
+		return NULL; 
+
+	List* servers = service->servers;
+	ListIterator iter;
+	list_iterator_init(&iter, servers);
+	Server* server = NULL;
+	uint32_t session_count = UINT32_MAX;
+	while(list_iterator_has_next(&iter)) {
+		Server* _server = list_iterator_next(&iter);
+
+		if(_server->state != LB_SERVER_STATE_OK)
+			continue;
+
+		if(map_size(_server->sessions) < session_count)
+			server = _server;
+	}
+
 	return server;
 }

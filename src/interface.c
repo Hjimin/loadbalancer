@@ -9,18 +9,21 @@ Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint
 		return NULL;
 
 	Interface* interface = malloc(sizeof(Interface));
+	if(interface == NULL)
+		return NULL;
+
 	interface->protocol = protocol;
 	interface->addr = addr;
 	interface->port = port;
+	interface->ni = ni;
+	interface->ni_num = ni_num;
+
 	interface->tcp_ports = NULL;
 	interface->tcp_next_port = 0;
 	interface->udp_ports = NULL;
 	interface->udp_next_port = 0;
-	interface->ni = ni;
-	interface->ni_num = ni_num;
 
 	return interface;
-
 }
 
 void interface_delete(Interface* interface) {

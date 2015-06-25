@@ -102,6 +102,8 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					schedule = LB_SCHEDULE_ROUND_ROBIN;
 				else if(!strcmp(argv[i], "r"))
 					schedule = LB_SCHEDULE_RANDOM;
+				else if(!strcmp(argv[i], "min"))
+					schedule = LB_SCHEDULE_MIN;
 				else
 					return i;
 

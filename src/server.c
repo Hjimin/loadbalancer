@@ -27,16 +27,10 @@ typedef struct {
 	uint64_t	timeout;
 } ARPEntity;
 
-//uint32_t ARP_TIMEOUT = 14400;	// 4 hours
-
 bool server_arp_process(Packet* packet) {
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	if(endian16(ether->type) != ETHER_TYPE_ARP)
 		return false;
-	
- //	uint32_t addr = (uint32_t)(uint64_t)ni_config_get(packet->ni, "ip");
- //	if(!addr)
- //		return false;
 	
 	Map* arp_table = ni_config_get(packet->ni, ARP_TABLE);
 	if(!arp_table) {

@@ -9,11 +9,9 @@
 
 #define LB_SCHEDULE_ROUND_ROBIN		1
 #define LB_SCHEDULE_RANDOM		2
+#define LB_SCHEDULE_MIN			3
 
 #define LB_SERVICE_DEFAULT_TIMEOUT	30000000
-
-#define SERVICE_ALLOCATE_FAIL		-10000
-#define SERVICE_LIST_CREATE_FAIL	-10001
 
 typedef struct Service{
 	Interface*	service_interface;
