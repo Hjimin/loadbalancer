@@ -27,19 +27,19 @@ int lb_ginit() {
 		if(sessions == NULL) {
 			return -1;
 		}
-		ni_config_put(ni, "pn.lb.sessions", sessions);
+		ni_config_put(ni, PN_LB_SESSIONS, sessions);
 
 		Map* servers = map_create(4096, NULL, NULL, NULL);
 		if(servers == NULL) {
 			return -1;
 		}
-		ni_config_put(ni, "pn.lb.servers", servers);
+		ni_config_put(ni, PN_LB_SERVERS, servers);
 
 		List* private_interfaces = list_create(NULL);
 		if(private_interfaces == NULL) {
 			return -1;
 		}
-		ni_config_put(ni, "pn.lb.private_interfaces", private_interfaces);
+		ni_config_put(ni, PN_LB_PRIVATE_INTERFACES, private_interfaces);
 	}
 
 	return 0;
@@ -106,6 +106,7 @@ static bool process_service(Packet* packet) {
 
 		session->loadbalancer_pack(session, packet, SESSION_IN);
 		ni_output(session->server->server_interface->ni, packet);
+		printf("here\n");
 
 		return true;
 	}
@@ -116,7 +117,7 @@ static bool process_service(Packet* packet) {
 static bool process_server(Packet* packet) {
 	NetworkInterface* ni = packet->ni;
 	
-	List* private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+	List* private_interfaces = ni_config_get(ni, PN_LB_PRIVATE_INTERFACES);
 	if(list_is_empty(private_interfaces))
 		return false;
 

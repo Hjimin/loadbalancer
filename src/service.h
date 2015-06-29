@@ -13,6 +13,8 @@
 
 #define LB_SERVICE_DEFAULT_TIMEOUT	30000000
 
+#define PN_LB_SERVICE	"pn.lb.service"
+
 typedef struct Service{
 	Interface*	service_interface;
 	uint8_t		state;

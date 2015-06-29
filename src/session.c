@@ -51,6 +51,7 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 	if(service->state != LB_SERVICE_STATE_OK)
 		return NULL;
 	
+	printf("session alloc\n");
 	Session* session = malloc(sizeof(Session));
 	if(session == NULL) {
 		printf("Can'nt allocate Session\n");
@@ -102,12 +103,12 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 
 	session->fin = false;
 
-	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
 	if(!map_put(sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport), session)) {
 		goto error_session_map_put1;
 	}
 
-	sessions = ni_config_get(server->server_interface->ni, "pn.lb.sessions");
+	sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
 	uint64_t key2 = (uint64_t)session->private_interface->protocol << 48 | (uint64_t)session->private_interface->addr << 16 | (uint64_t)session->private_interface->port;
 	if(!map_put(sessions, (void*)key2, session)) {
 		goto error_session_map_put2;
@@ -135,7 +136,7 @@ error_allocate_session:
 }
 
 Session* session_get_from_service(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport) {
-	Map* sessions = ni_config_get(ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(ni, PN_LB_SESSIONS);
 	Session* session = map_get(sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport));
 
 	if(session != NULL)
@@ -150,14 +151,14 @@ bool session_free(Session* session) {
 		session->event_id = 0;
 	}
 
-	Map* sessions = ni_config_get(session->client_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(session->client_interface->ni, PN_LB_SESSIONS);
 	if(!map_remove(sessions, (void*)((uint64_t)session->client_interface->protocol << 48 | (uint64_t)session->client_interface->addr << 16 | (uint64_t)session->client_interface->port))) {
 		printf("Can'nt remove session from servers\n");
 		goto error_session_free1;
 	}
 
 	Interface* private_interface = session->private_interface;
-	sessions = ni_config_get(private_interface->ni, "pn.lb.sessions");
+	sessions = ni_config_get(private_interface->ni, PN_LB_SESSIONS);
 	uint64_t key = (uint64_t)private_interface->protocol << 48 | (uint64_t)private_interface->addr << 16 | (uint64_t)private_interface->port;
 	if(!map_remove(sessions, (void*)key)) {
 		printf("Can'nt remove session from private ni\n");
@@ -185,7 +186,7 @@ error_session_free1:
 }
 
 Session* session_get_from_server(NetworkInterface* ni, uint8_t protocol, uint32_t daddr, uint16_t dport) {
-	Map* sessions = ni_config_get(ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(ni, PN_LB_SESSIONS);
 	uint64_t key = ((uint64_t)protocol << 48 | (uint64_t)daddr << 16 | (uint64_t)dport);
 
 	Session* session = map_get(sessions, (void*)key);

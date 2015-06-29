@@ -3,6 +3,8 @@
 #include <net/ni.h>
 #include <util/types.h>
 
+#define PN_LB_PRIVATE_INTERFACES	"pn.lb.private_interfaces"
+
 typedef struct {
 	uint8_t protocol;
 	uint32_t addr;

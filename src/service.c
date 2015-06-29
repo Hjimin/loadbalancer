@@ -55,10 +55,10 @@ Service* service_alloc(Interface* service_interface, Interface** private_interfa
 		NetworkInterface* ni = private_interfaces[i]->ni;
 		map_put(service->private_interfaces, ni, private_interfaces[i]);
 
-		List* _private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+		List* _private_interfaces = ni_config_get(ni, PN_LB_PRIVATE_INTERFACES);
 		list_add(_private_interfaces, private_interfaces[i]);
 
-		Map* servers = ni_config_get(ni, "pn.lb.servers");
+		Map* servers = ni_config_get(ni, PN_LB_SERVERS);
 		if(map_is_empty(servers))
 			continue;
 
@@ -103,21 +103,21 @@ static bool service_free(Service* service) {
 }
 
 bool service_add(NetworkInterface* ni, Service* service) {
-	ni_config_put(ni, "pn.lb.service", service);
+	ni_config_put(ni, PN_LB_SERVICE, service);
 	ni_config_put(ni, "ip", (void*)(uint64_t)service->service_interface->addr);
 
 	return true;
 }
 
 Service* service_get(NetworkInterface* ni) {
-	return ni_config_get(ni, "pn.lb.service");
+	return ni_config_get(ni, PN_LB_SERVICE);
 }
 
 void service_is_remove_grace(Service* service) {
 	if(service->state == LB_SERVICE_STATE_OK)
 		return;
 
-	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
 	if(map_is_empty(sessions)) { //none session
 		if(service->event_id != 0)
 			event_timer_remove(service->event_id);
@@ -133,7 +133,7 @@ bool service_remove(Service* service, uint64_t wait) {
 		return false;
 	}
 
-	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
 	if(map_is_empty(sessions)) { //none session
 		service_remove_force(service);
 
@@ -157,7 +157,7 @@ bool service_remove_force(Service* service) {
 
 	service->state = LB_SERVICE_STATE_REMOVING;
 
-	Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
 	if(!map_is_empty(sessions)) {
 	}
 
@@ -168,12 +168,12 @@ bool service_remove_force(Service* service) {
 		MapEntry* entry = map_iterator_next(&iter);
 		Interface* private_interface = entry->data;
 		NetworkInterface* ni = private_interface->ni;
-		List* _private_interfaces = ni_config_get(ni, "pn.lb.private_interfaces");
+		List* _private_interfaces = ni_config_get(ni, PN_LB_PRIVATE_INTERFACES);
 		list_remove_data(_private_interfaces, private_interface);
 	}
 
 	Interface* service_interface = service->service_interface;
-	ni_config_remove(service_interface->ni, "pn.lb.service");
+	ni_config_remove(service_interface->ni, PN_LB_SERVICE);
 	service_free(service);
 
 	return true;
@@ -230,7 +230,7 @@ void service_dump() {
 		NetworkInterface* ni = ni_get(i);
 		if(ni == NULL)
 			continue;
-		Service* service = ni_config_get(ni, "pn.lb.service");
+		Service* service = ni_config_get(ni, PN_LB_SERVICE);
 		if(service == NULL) {
 			continue;
 		}
@@ -240,7 +240,7 @@ void service_dump() {
 		print_addr_port(service->service_interface->addr, service->service_interface->port);
 		print_schedule(service->schedule);
 		print_ni_num(service->service_interface->ni_num);
-		Map* sessions = ni_config_get(service->service_interface->ni, "pn.lb.sessions");
+		Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
 		print_session_count(sessions);
 		print_server_count(service->servers);
 		printf("\n");

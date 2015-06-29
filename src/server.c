@@ -66,7 +66,7 @@ bool server_arp_process(Packet* packet) {
 	switch(endian16(arp->operation)) {
 		case 1:	// Request
 			;
-			List* private_interfaces = ni_config_get(packet->ni, "pn.lb.private_interfaces");
+			List* private_interfaces = ni_config_get(packet->ni, PN_LB_PRIVATE_INTERFACES);
 			if(list_is_empty(private_interfaces))
 				return false;
 			ListIterator iter;
@@ -136,12 +136,7 @@ bool server_arp_request(NetworkInterface* ni, uint32_t saddr, uint32_t daddr) {
 	 
 	packet->end = packet->start + sizeof(Ether) + sizeof(ARP);
 	
-	if(!ni_output(ni, packet)) {
-		ni_free(packet);
-		return false;
-	}
-	
-	return true;
+	return ni_output(ni, packet);
 }
 
 uint64_t server_arp_get_mac(NetworkInterface* ni, uint32_t saddr, uint32_t daddr) {
@@ -165,7 +160,7 @@ bool server_icmp_process(Packet* packet) {
 	if(endian16(ether->type) != ETHER_TYPE_IPv4)
 		return false;
 	
-	List* private_interfaces = ni_config_get(packet->ni, "pn.lb.private_interfaces");
+	List* private_interfaces = ni_config_get(packet->ni, PN_LB_PRIVATE_INTERFACES);
 	if(list_is_empty(private_interfaces))
 		return false;
 	ListIterator iter;
@@ -239,7 +234,7 @@ bool server_free(Server* server) {
 }
 
 Server* server_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
-	Map* servers = ni_config_get(ni, "pn.lb.servers");
+	Map* servers = ni_config_get(ni, PN_LB_SERVERS);
 	uint64_t key = (uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port;
 	Server* server = map_get(servers, (void*)key);
 	return server;
@@ -249,7 +244,7 @@ bool server_add(NetworkInterface* ni, Server* server) {
 	uint32_t count = ni_count();
 	for(int i = 0; i < count; i++) {
 		NetworkInterface* service_ni = ni_get(i);
-		Service* service = ni_config_get(service_ni, "pn.lb.service");
+		Service* service = ni_config_get(service_ni, PN_LB_SERVICE);
 
 		if(service == NULL)
 			continue;
@@ -261,7 +256,7 @@ bool server_add(NetworkInterface* ni, Server* server) {
 		list_add(service->servers, server);
 	}
 
-	Map* servers = ni_config_get(ni, "pn.lb.servers");
+	Map* servers = ni_config_get(ni, PN_LB_SERVERS);
 	Interface* server_interface = server->server_interface;
 
 	uint64_t key = (uint64_t)server_interface->protocol << 48 | (uint64_t)server_interface->addr << 16 | (uint64_t)server_interface->port;
@@ -276,7 +271,7 @@ void server_is_remove_grace(Server* server) {
 	if(server->state == LB_SERVER_STATE_OK)
 		return;
 
-	Map* sessions = ni_config_get(server->server_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
 	if(map_is_empty(sessions)) { //none session //		
 		if(server->event_id != 0) {
 			event_timer_remove(server->event_id);
@@ -285,7 +280,7 @@ void server_is_remove_grace(Server* server) {
 
 		//remove from ni
 		Interface* server_interface = server->server_interface;
-		Map* servers = ni_config_get(server_interface->ni, "pn.lb.servers");
+		Map* servers = ni_config_get(server_interface->ni, PN_LB_SERVERS);
 		uint64_t key = (uint64_t)server_interface->protocol << 48 | (uint64_t)server_interface->addr << 16 | (uint64_t)server_interface->port;
 		map_remove(servers, (void*)key);
 
@@ -301,7 +296,7 @@ bool server_remove(Server* server, uint64_t wait) {
 		return false;
 	}
 
-	Map* sessions = ni_config_get(server->server_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
 	if(map_is_empty(sessions)) {
 		server_remove_force(server);
 		return true;
@@ -321,11 +316,11 @@ bool server_remove_force(Server* server) {
 		server->event_id = 0;
 	}
 
-	Map* sessions = ni_config_get(server->server_interface->ni, "pn.lb.sessions");
+	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
 	if(map_is_empty(sessions)) {
 		//delet from ni
 		Interface* server_interface = server->server_interface;
-		Map* servers = ni_config_get(server_interface->ni, "pn.lb.servers");
+		Map* servers = ni_config_get(server_interface->ni, PN_LB_SERVERS);
 		uint64_t key = (uint64_t)server_interface->protocol << 48 | (uint64_t)server_interface->addr << 16 | (uint64_t)server_interface->port;
 		map_remove(servers, (void*)key);
 
@@ -379,7 +374,7 @@ void server_dump() {
 	printf("State\t\tAddr:Port\t\tMode\tNIC\tSessions\n");
 	uint8_t count = ni_count();
 	for(int i = 0; i < count; i++) {
-		Map* servers = ni_config_get(ni_get(i), "pn.lb.servers");
+		Map* servers = ni_config_get(ni_get(i), PN_LB_SERVERS);
 		MapIterator iter;
 		map_iterator_init(&iter, servers);
 		while(map_iterator_has_next(&iter)) {
@@ -392,7 +387,7 @@ void server_dump() {
 			print_addr_port(server->server_interface->addr, server->server_interface->port);
 			print_mode(server->mode);
 			print_ni_num(server->server_interface->ni_num);
-			Map* sessions = ni_config_get(server->server_interface->ni, "pn.lb.sessions");
+			Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
 			print_session_count(sessions);
 			printf("\n");
 		}

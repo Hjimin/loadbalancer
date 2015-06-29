@@ -13,6 +13,8 @@
 #define LB_MODE_DNAT	2
 #define LB_MODE_DR	3
 
+#define PN_LB_SERVERS	"pn.lb.servers"
+
 typedef struct{
 	Interface*	server_interface;
 

@@ -6,6 +6,8 @@
 #define SESSION_IN	1
 #define SESSION_OUT	2
 
+#define PN_LB_SESSIONS	"pn.lb.sessions"
+
 typedef struct Session{
 	Interface*	client_interface;
 	Service*	service;
