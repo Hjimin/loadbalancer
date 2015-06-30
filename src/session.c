@@ -315,7 +315,7 @@ static bool nat_pack(Session* session, Packet* packet, uint8_t direct) {
 					ip->source = endian32(service_interface->addr);
 					ip->destination = endian32(session->client_interface->addr);
 					udp->source = endian16(service_interface->port);
-					udp->destination = endian16(session->client->client_interface->port);
+					udp->destination = endian16(session->client_interface->port);
 
 					udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 					return true;
