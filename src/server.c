@@ -387,8 +387,7 @@ void server_dump() {
 			print_addr_port(server->server_interface->addr, server->server_interface->port);
 			print_mode(server->mode);
 			print_ni_num(server->server_interface->ni_num);
-			Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
-			print_session_count(sessions);
+			print_session_count(server->sessions);
 			printf("\n");
 		}
 	}

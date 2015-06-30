@@ -3,12 +3,12 @@ $vmid = create core: 1 memory: 0x1000000 storage: 0x200000 nic: mac: 0 port: 0 i
 upload $vmid main
 start $vmid
 
-stdin $vmid 0 "service add -u 192.168.100.200:80 0 -s rr -out 192.168.101.202 1"
-stdin $vmid 0 "server add -u 192.168.101.201:8080 1 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.201:8081 1 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.201:8082 1 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.201:8083 1 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.201:8084 1 -m nat"
+stdin $vmid 0 "service add -u 192.168.100.200:7 1 -s rr -out 192.168.101.200 0"
+stdin $vmid 0 "server add -u 192.168.101.100:50000 0 -m nat"
+stdin $vmid 0 "server add -u 192.168.101.100:50001 0 -m nat"
+stdin $vmid 0 "server add -u 192.168.101.100:50002 0 -m nat"
+stdin $vmid 0 "server add -u 192.168.101.100:50003 0 -m nat"
+stdin $vmid 0 "server add -u 192.168.101.100:50004 0 -m nat"
 stdin $vmid 0 "service list"
 
 #stdin $vmid 0 "service delete 0"

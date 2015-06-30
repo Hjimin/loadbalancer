@@ -313,9 +313,9 @@ static bool nat_pack(Session* session, Packet* packet, uint8_t direct) {
 					ether->smac = endian48(service_interface->ni->mac);
 					ether->dmac = endian48(arp_get_mac(session->client_interface->ni, session->client_interface->addr));
 					ip->source = endian32(service_interface->addr);
-					ip->destination = endian32(server_interface->addr);
-					udp->source = endian16(service_interface->addr);
-					udp->destination = endian16(server_interface->port);
+					ip->destination = endian32(session->client_interface->addr);
+					udp->source = endian16(service_interface->port);
+					udp->destination = endian16(session->client->client_interface->port);
 
 					udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 					return true;
