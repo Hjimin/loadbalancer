@@ -17,7 +17,8 @@ typedef struct Session{
 	uint64_t	event_id;
 	bool		fin;
 
-	bool(*loadbalancer_pack)(struct Session* session, Packet* packet, uint8_t direct);
+	bool(*loadbalancer_pack)(struct Session* session, Packet* packet);
+	bool(*loadbalancer_unpack)(struct Session* session, Packet* packet);
 	bool(*session_free)(struct Session* session);
 } Session;
 

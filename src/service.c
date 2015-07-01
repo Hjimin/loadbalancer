@@ -87,14 +87,6 @@ error_service_alloc:
 }
 
 static bool service_free(Service* service) {
-	//delete from server
- //	ListIterator iter;
- //	list_iterator_init(&iter, service->servers);
- //	while(list_iterator_has_next(&iter)) {
- //		Server* server = list_iterator_next(&iter);
- //		list_remove_data(server->services, service);
- //	}
-
 	map_destroy(service->private_interfaces);
 	list_destroy(service->servers);
 	free(service);

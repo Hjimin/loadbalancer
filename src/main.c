@@ -6,7 +6,6 @@
 #include <util/cmd.h>
 #include <util/types.h>
 #include <readline.h>
-#include <errno.h>
 
 #include "service.h"
 #include "server.h"
@@ -59,11 +58,11 @@ static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exi
 static int cmd_service(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
 	if(!strcmp(argv[1], "add")) {
 		int i = 2;
-		Interface* service_interface;
+		Interface* service_interface = NULL;
 		Interface* private_interface[16];
 		uint8_t private_interface_count = 0;
 		uint8_t schedule = LB_SCHEDULE_ROUND_ROBIN;
-		uint8_t protocol;
+		uint8_t protocol = 0;
 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t")) {
@@ -126,7 +125,7 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 			
 		Service* service = service_alloc(service_interface, private_interface, private_interface_count, schedule);
 		if(service == NULL) {
-			printf("Can'nt create service : %d\n", errno);
+			printf("Can'nt create service\n");
 			return -1;
 		}
 		service_add(service_interface->ni, service);
@@ -191,7 +190,7 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 static int cmd_server(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
 	if(!strcmp(argv[1], "add")) {
 		int i = 2;
-		Interface* server_interface;
+		Interface* server_interface = NULL;
 		uint8_t mode = LB_MODE_NAT; //DEFAULT
 
 		for(;i < argc; i++) {
@@ -246,7 +245,7 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 		}
 		Server* server = server_alloc(server_interface, mode);
 		if(server == NULL) {
-			printf("Can'nt add server: %d\n", errno);
+			printf("Can'nt add server\n");
 			return -1;
 		}
 		if(!server_add(server_interface->ni, server)) {

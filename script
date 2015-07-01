@@ -4,11 +4,11 @@ upload $vmid main
 start $vmid
 
 stdin $vmid 0 "service add -u 192.168.100.200:7 1 -s rr -out 192.168.101.200 0"
-stdin $vmid 0 "server add -u 192.168.101.100:50000 0 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.100:50001 0 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.100:50002 0 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.100:50003 0 -m nat"
-stdin $vmid 0 "server add -u 192.168.101.100:50004 0 -m nat"
+stdin $vmid 0 "server add -u 192.168.101.100:50000 0 -m dnat"
+stdin $vmid 0 "server add -u 192.168.101.100:50001 0 -m dnat"
+stdin $vmid 0 "server add -u 192.168.101.100:50002 0 -m dnat"
+stdin $vmid 0 "server add -u 192.168.101.100:50003 0 -m dnat"
+stdin $vmid 0 "server add -u 192.168.101.100:50004 0 -m dnat"
 stdin $vmid 0 "service list"
 
 #stdin $vmid 0 "service delete 0"

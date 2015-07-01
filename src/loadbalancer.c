@@ -104,7 +104,7 @@ static bool process_service(Packet* packet) {
 		if(session == NULL)
 			return false;
 
-		session->loadbalancer_pack(session, packet, SESSION_IN);
+		session->loadbalancer_pack(session, packet);
 		ni_output(session->server->server_interface->ni, packet);
 
 		return true;
@@ -153,7 +153,8 @@ static bool process_server(Packet* packet) {
 		if(session == NULL)
 			return false;
 
-		session->loadbalancer_pack(session, packet, SESSION_OUT);
+		session->loadbalancer_unpack(session, packet);
+		ni_output(session->client_interface->ni, packet);
 
 		return true;
 	}

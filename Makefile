@@ -1,6 +1,6 @@
 .PHONY: run all clean
 
-CFLAGS = -I ../../include -O0 -g -Wall -Werror -m64 -ffreestanding -fno-stack-protector -std=gnu99
+CFLAGS = -I ../../include -O2 -g -Wall -Werror -m64 -ffreestanding -fno-stack-protector -std=gnu99
 
 DIR = obj
 
