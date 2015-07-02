@@ -27,6 +27,8 @@ typedef struct {
 	uint64_t	timeout;
 } ARPEntity;
 
+extern void* __gmalloc_pool;
+
 bool server_arp_process(Packet* packet) {
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	if(endian16(ether->type) != ETHER_TYPE_ARP)
@@ -203,19 +205,17 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	server->mode = mode;
 	server->event_id = 0;
 
- //	server->services = list_create(NULL);
- //	if(server->services == NULL)
- //		goto error_list_create;
-	server->sessions = map_create(4096, NULL, NULL, NULL);
-	if(server->sessions == NULL)
+	server->sessions = map_create(4096, NULL, NULL, __gmalloc_pool);
+	if(!server->sessions)
 		goto error_map_create;
 		
 	return server;
 
 error_map_create:
- //	list_destroy(server->services);
- //error_list_create: free(server);
+	free(server);
+
 error_server_alloc:
+
 	return NULL;
 }
 

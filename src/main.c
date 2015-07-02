@@ -117,7 +117,11 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				else
 					return i;
 
-				private_interface[private_interface_count++] = interface_create(protocol, addr, 0, out_ni);
+				Interface* _private_interface = interface_create(protocol, addr, 0, out_ni);
+				if(!_private_interface)
+					return -1;
+
+				private_interface[private_interface_count++] = _private_interface;
 				continue;
 			} else
 				return i;
@@ -404,7 +408,7 @@ int main(int argc, char** argv) {
 			NetworkInterface* ni = ni_get(i);
 			if(ni_has_input(ni)) {
 				Packet* packet = ni_input(ni);
-				if(packet == NULL)
+				if(!packet)
 					continue;
 
 				lb_process(packet);

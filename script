@@ -10,6 +10,7 @@ stdin $vmid 0 "server add -u 192.168.101.100:50002 0 -m dnat"
 stdin $vmid 0 "server add -u 192.168.101.100:50003 0 -m dnat"
 stdin $vmid 0 "server add -u 192.168.101.100:50004 0 -m dnat"
 stdin $vmid 0 "service list"
+stdin $vmid 0 "server list"
 
 #stdin $vmid 0 "service delete 0"
 #stdin $vmid 0 "server delete -t 192.168.100.201:8080 1"

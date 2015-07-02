@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <malloc.h>
+#include <gmalloc.h>
 #include <util/map.h>
 #include <util/event.h>
 #include <net/ether.h>
@@ -29,7 +30,7 @@ static bool dr_pack(Session* session, Packet* packet);
 static bool dr_unpack(Session* session, Packet* packet);
 static bool dr_free(Session* session);
 
-static void session_recharge(Session* session) {
+static bool session_recharge(Session* session) {
 	bool session_free_event(void* context) {
 		Session* session = context;
 		session->event_id = 0;
@@ -38,13 +39,16 @@ static void session_recharge(Session* session) {
 		return false;
 	}
 	if(session->fin)
-		return;
+		return true;
 
-	if(session->event_id == 0)
-		session->event_id = event_timer_add(session_free_event, session, 30000000, 0);
-	else
-		session->event_id = event_timer_update(session->event_id);
-
+	if(!session->event_id) {
+		session->event_id = event_timer_add(session_free_event, session, 30000000, 30000000);
+		if(session->event_id)
+			return true;
+		else
+			return false;
+	} else
+		return event_timer_update(session->event_id);
 }
 
 Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
@@ -59,28 +63,29 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 	if(service->state != LB_SERVICE_STATE_OK)
 		return NULL;
 	
-	Session* session = malloc(sizeof(Session));
-	if(session == NULL) {
+	Session* session = gmalloc(sizeof(Session));
+	if(!session) {
 		printf("Can'nt allocate Session\n");
 		goto error_allocate_session;
 	}
 
 	session->service = service;
-	session->client_interface = interface_create(protocol, saddr, sport, service->service_interface->ni_num);
-	if(session->client_interface == NULL) {
-		printf("Interface create error\n");
-		goto error_interface_create;
-	}
 
 	Server* server = service->get_server(service);
-	if(server == NULL) {
+	if(!server) {
 		printf("Can'nt get server\n");
 		goto error_get_server;
 	}
 	session->server = server;
 
+	session->client_interface = interface_create(protocol, saddr, sport, service->service_interface->ni_num);
+	if(!session->client_interface) {
+		printf("Interface create error\n");
+		goto error_interface_create;
+	}
+
 	Interface* private_interface = map_get(service->private_interfaces, server->server_interface->ni);
-	if(private_interface == NULL) {
+	if(!private_interface) {
 		goto error_get_private_interface;
 	}
 
@@ -88,18 +93,28 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 		case LB_MODE_NAT:
 			 switch(protocol) {
 				 case IP_PROTOCOL_TCP:
-					session->private_interface = interface_create(private_interface->protocol, private_interface->addr, interface_tcp_port_alloc(private_interface), private_interface->ni_num);
-					if(session->private_interface == NULL)
+					;
+					uint16_t tcp_port = interface_tcp_port_alloc(private_interface);
+					session->private_interface = interface_create(private_interface->protocol, private_interface->addr, tcp_port, private_interface->ni_num);
+					if(!session->private_interface) {
+						interface_tcp_port_free(private_interface, tcp_port);
+
 						goto error_private_interface_create;
+					}
 
 					session->loadbalancer_pack = nat_tcp_pack;
 					session->loadbalancer_unpack = nat_tcp_unpack;
 					session->session_free = nat_tcp_free;
 					 break;
 				 case IP_PROTOCOL_UDP:
-					session->private_interface = interface_create(private_interface->protocol, private_interface->addr, interface_udp_port_alloc(private_interface), private_interface->ni_num);
-					if(session->private_interface == NULL)
+					;
+					uint16_t udp_port = interface_udp_port_alloc(private_interface);
+					session->private_interface = interface_create(private_interface->protocol, private_interface->addr, udp_port, private_interface->ni_num);
+					if(!session->private_interface) {
+						interface_udp_port_free(private_interface, udp_port);
+
 						goto error_private_interface_create;
+					}
 
 					session->loadbalancer_pack = nat_udp_pack;
 					session->loadbalancer_unpack = nat_udp_unpack;
@@ -110,7 +125,7 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 			break;
 		case LB_MODE_DNAT:
 			session->private_interface = interface_create(protocol, saddr, sport, private_interface->ni_num);
-			if(session->private_interface == NULL)
+			if(!session->private_interface)
 				goto error_private_interface_create;
 
 			switch(protocol) {
@@ -123,7 +138,6 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 					session->loadbalancer_unpack = dnat_udp_unpack;
 					break;
 			}
-
 			session->session_free = dnat_free;
 			break;
 		case LB_MODE_DR:
@@ -132,8 +146,6 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 			session->session_free = dr_free;
 			break;
 	}
-
-	session->fin = false;
 
 	Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
 	uint64_t key1 = (uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport;
@@ -151,6 +163,7 @@ Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, u
 		goto error_session_map_put3;
 	}
 
+	session->fin = false;
 	session->event_id = 0;
 	session_recharge(session);
 	
@@ -166,13 +179,14 @@ error_session_map_put2:
 error_session_map_put1:
 	if(session->private_interface)
 		interface_delete(session->private_interface);
-
 error_private_interface_create:
+
 error_get_private_interface:
-error_get_server:
 	interface_delete(session->client_interface);
 
 error_interface_create:
+error_get_server:
+
 	free(session);
 
 error_allocate_session:
@@ -184,7 +198,7 @@ Session* session_get_from_service(NetworkInterface* ni, uint8_t protocol, uint32
 	Map* sessions = ni_config_get(ni, PN_LB_SESSIONS);
 	Session* session = map_get(sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport));
 
-	if(session != NULL)
+	if(session)
 		session_recharge(session);
 
 	return session;
@@ -236,7 +250,7 @@ Session* session_get_from_server(NetworkInterface* ni, uint8_t protocol, uint32_
 
 	Session* session = map_get(sessions, (void*)key);
 
-	if(session != NULL)
+	if(session)
 		session_recharge(session);
 
 	return session;
@@ -281,14 +295,11 @@ static bool nat_tcp_pack(Session* session, Packet* packet) {
 
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 	if(session->fin && tcp->ack) {
-		if(session->event_id != 0) {
-			event_timer_remove(session->event_id);
-			session->event_id = 0;
-		}
 		session_free(session);
 	}
 	return true;
 }
+
 static bool nat_udp_pack(Session* session, Packet* packet) {
 	Interface* server_interface = session->server->server_interface;
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
@@ -372,7 +383,6 @@ static bool dnat_tcp_pack(Session* session, Packet* packet) {
 
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 	if(session->fin && tcp->ack) {
-		event_timer_remove(session->event_id);
 		session_free(session);
 	}
 
@@ -410,6 +420,7 @@ static bool dnat_tcp_unpack(Session* session, Packet* packet) {
 	if(tcp->fin) {
 		session_set_fin(session);
 	}
+
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 
 	return true;

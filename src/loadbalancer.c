@@ -15,6 +15,7 @@
 #include "server.h"
 #include "session.h"
 
+extern void* __gmalloc_pool;
 int lb_ginit() {
 	uint32_t count = ni_count();
 	if(count < 2)
@@ -22,20 +23,19 @@ int lb_ginit() {
 
 	for(int i = 0; i < count; i++) {
 		NetworkInterface* ni = ni_get(i);
-		arp_announce(ni, 0);
-		Map* sessions = map_create(4096, NULL, NULL, NULL);
+		Map* sessions = map_create(4096, NULL, NULL, __gmalloc_pool);
 		if(sessions == NULL) {
 			return -1;
 		}
 		ni_config_put(ni, PN_LB_SESSIONS, sessions);
 
-		Map* servers = map_create(4096, NULL, NULL, NULL);
+		Map* servers = map_create(4096, NULL, NULL, __gmalloc_pool);
 		if(servers == NULL) {
 			return -1;
 		}
 		ni_config_put(ni, PN_LB_SERVERS, servers);
 
-		List* private_interfaces = list_create(NULL);
+		List* private_interfaces = list_create(__gmalloc_pool);
 		if(private_interfaces == NULL) {
 			return -1;
 		}
@@ -97,15 +97,15 @@ static bool process_service(Packet* packet) {
 		}
 
 		Session* session = session_get_from_service(ni, protocol, saddr, sport);
-		if(!session) {
+		if(!session)
 			session = session_alloc(ni, protocol, saddr, sport, daddr, dport);
-		}
 	
-		if(session == NULL)
+		if(!session)
 			return false;
 
+		NetworkInterface* server_ni = session->server->server_interface->ni;
 		session->loadbalancer_pack(session, packet);
-		ni_output(session->server->server_interface->ni, packet);
+		ni_output(server_ni, packet);
 
 		return true;
 	}
@@ -150,11 +150,12 @@ static bool process_server(Packet* packet) {
 		}
 
 		Session* session = session_get_from_server(ni, protocol, daddr, dport);
-		if(session == NULL)
+		if(!session)
 			return false;
 
+		NetworkInterface* client_ni = session->client_interface->ni;
 		session->loadbalancer_unpack(session, packet);
-		ni_output(session->client_interface->ni, packet);
+		ni_output(client_ni, packet);
 
 		return true;
 	}
