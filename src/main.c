@@ -9,6 +9,7 @@
 
 #include "service.h"
 #include "server.h"
+#include "schedule.h"
 #include "loadbalancer.h"
 
 static bool is_continue;
@@ -101,8 +102,12 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					schedule = LB_SCHEDULE_ROUND_ROBIN;
 				else if(!strcmp(argv[i], "r"))
 					schedule = LB_SCHEDULE_RANDOM;
-				else if(!strcmp(argv[i], "min"))
-					schedule = LB_SCHEDULE_MIN;
+				else if(!strcmp(argv[i], "l"))
+					schedule = LB_SCHEDULE_LEAST;
+				else if(!strcmp(argv[i], "h"))
+					schedule = LB_SCHEDULE_SOURCE_IP_HASH;
+				else if(!strcmp(argv[i], "w"))
+					schedule = LB_SCHEDULE_WEIGHTED_ROUND_ROBIN;
 				else
 					return i;
 
@@ -127,6 +132,11 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				return i;
 		}
 			
+		if(!service_interface) {
+			printf("service interface\n");
+			return -1;
+		}
+
 		Service* service = service_alloc(service_interface, private_interface, private_interface_count, schedule);
 		if(service == NULL) {
 			printf("Can'nt create service\n");
@@ -154,7 +164,7 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		service = service_get(ni);
 
 		for(;i < argc; i++) {
-			if(!strcmp(argv[i], "-w")) {
+			if(!strcmp(argv[i], "-o")) {
 				i++;
 				if(is_uint64(argv[i]))
 					wait = parse_uint64(argv[i]);
@@ -214,7 +224,7 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 				continue;
 			} else if(!strcmp(argv[i], "-u")) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
+				uint8_t protocol = IP_PROTOCOL_UDP;
 				uint32_t addr = str_to_adr(argv[i]);
 				uint16_t port = str_to_port(argv[i]);
 				i++;

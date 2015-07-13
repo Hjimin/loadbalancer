@@ -3,6 +3,8 @@
 
 #include "interface.h"
 
+extern void* __gmalloc_pool;
+
 Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num) {
 	NetworkInterface* ni = ni_get(ni_num);
 	if(ni == NULL)
@@ -23,17 +25,28 @@ Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint
 	interface->udp_ports = NULL;
 	interface->udp_next_port = 0;
 
+	interface->sessions = NULL;
+
 	return interface;
 }
 
 void interface_delete(Interface* interface) {
+	if(interface->tcp_ports)
+		map_destroy(interface->tcp_ports);
+
+	if(interface->udp_ports)
+		map_destroy(interface->udp_ports);
+
+	if(interface->sessions)
+		map_destroy(interface->sessions);
+
 	free(interface);
 }
 
 uint16_t interface_tcp_port_alloc(Interface* interface) {
 	Map* ports = interface->tcp_ports;
 	if(!ports) {
-		ports = map_create(4096, NULL, NULL, NULL);
+		ports = map_create(4096, NULL, NULL, __gmalloc_pool);
 		interface->tcp_ports = ports;
 	}
 	
@@ -64,7 +77,7 @@ void interface_tcp_port_free(Interface* interface, uint16_t port) {
 uint16_t interface_udp_port_alloc(Interface* interface) {
 	Map* ports = interface->udp_ports;
 	if(!ports) {
-		ports = map_create(4096, NULL, NULL, NULL);
+		ports = map_create(4096, NULL, NULL, __gmalloc_pool);
 		interface->udp_ports = ports;
 	}
 	

@@ -4,7 +4,8 @@ CFLAGS = -I ../../include -O2 -g -Wall -Werror -m64 -ffreestanding -fno-stack-pr
 
 DIR = obj
 
-OBJS = obj/main.o obj/loadbalancer.o obj/session.o obj/service.o obj/server.o obj/interface.o
+OBJS = obj/main.o obj/loadbalancer.o obj/session.o obj/service.o obj/server.o obj/interface.o \
+       obj/nat.o obj/dnat.o obj/dr.o obj/schedule.o
 
 
 LIBS = ../../lib/libpacketngin.a

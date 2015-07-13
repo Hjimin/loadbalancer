@@ -4,7 +4,9 @@
 #include <net/ni.h>
 #include <util/map.h>
 
+#include "service.h"
 #include "interface.h"
+//#include "session.h"
 
 #define LB_SERVER_STATE_OK		1
 #define LB_SERVER_STATE_REMOVING	2
@@ -15,15 +17,17 @@
 
 #define PN_LB_SERVERS	"pn.lb.servers"
 
-typedef struct{
+typedef struct Server{
 	Interface*	server_interface;
 
 	uint8_t		state;
 	uint8_t		mode;
+	uint8_t		weight;
 	uint64_t	event_id;
-
 	Map*		sessions;
-}Server;
+
+	Session*	(*get_session)(struct Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
+} Server;
 
 bool server_arp_process(Packet* packet);
 uint64_t server_arp_get_mac(NetworkInterface* ni, uint32_t saddr, uint32_t daddr);
@@ -32,6 +36,8 @@ Server* server_alloc(Interface* server_interface, uint8_t mode);
 bool server_free(Server* server);
 Server* server_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
 bool server_add(NetworkInterface* ni, Server* server);
+
+Session* server_get_session(NetworkInterface* ni, uint8_t protocol, uint32_t daddr, uint16_t dport);
 
 bool server_remove(Server* server, uint64_t wait);
 bool server_remove_force(Server* server);

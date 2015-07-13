@@ -11,10 +11,13 @@ typedef struct {
 	uint16_t port;
 	NetworkInterface* ni;
 	uint8_t ni_num;
+
 	Map* tcp_ports;
 	uint16_t tcp_next_port;
 	Map* udp_ports;
 	uint16_t udp_next_port;
+
+	Map* sessions;
 } Interface;
 
 Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num);

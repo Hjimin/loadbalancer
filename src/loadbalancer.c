@@ -96,14 +96,15 @@ static bool process_service(Packet* packet) {
 				return false;
 		}
 
-		Session* session = session_get_from_service(ni, protocol, saddr, sport);
-		if(!session)
-			session = session_alloc(ni, protocol, saddr, sport, daddr, dport);
+		Session* session = service_get_session(ni, protocol, saddr, sport);
+		if(!session) {
+			session = service_alloc_session(ni, protocol, saddr, sport, daddr, dport);
+		}
 	
 		if(!session)
 			return false;
 
-		NetworkInterface* server_ni = session->server->server_interface->ni;
+		NetworkInterface* server_ni = session->server_interface->ni;
 		session->loadbalancer_pack(session, packet);
 		ni_output(server_ni, packet);
 
@@ -149,7 +150,7 @@ static bool process_server(Packet* packet) {
 				return false;
 		}
 
-		Session* session = session_get_from_server(ni, protocol, daddr, dport);
+		Session* session = server_get_session(ni, protocol, daddr, dport);
 		if(!session)
 			return false;
 

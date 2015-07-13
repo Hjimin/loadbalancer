@@ -13,9 +13,12 @@
 #include <net/icmp.h>
 #include <net/checksum.h>
 
+#include "server.h"
 #include "service.h"
 #include "session.h"
-#include "server.h"
+#include "nat.h"
+#include "dnat.h"
+#include "dr.h"
 
 #define ARP_TABLE	"net.arp.arptable"
 #define ARP_TABLE_GC	"net.arp.arptable.gc"
@@ -203,6 +206,34 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	server->server_interface = server_interface;
 	server->state = LB_SERVER_STATE_OK;
 	server->mode = mode;
+	server->weight = 1;
+	switch(mode) {
+		case LB_MODE_NAT:
+			switch(server_interface->protocol) {
+				case IP_PROTOCOL_TCP:
+					server->get_session = nat_tcp_session_alloc;
+					break;
+				case IP_PROTOCOL_UDP:
+					server->get_session = nat_udp_session_alloc;
+					break;
+			}
+			break;
+		case LB_MODE_DNAT:
+			switch(server_interface->protocol) {
+				case IP_PROTOCOL_TCP:
+					server->get_session = dnat_tcp_session_alloc;
+					break;
+				case IP_PROTOCOL_UDP:
+					server->get_session = dnat_udp_session_alloc;
+					break;
+			}
+			break;
+		case LB_MODE_DR:
+			server->get_session = dr_session_alloc;
+			break;
+		default:
+			goto error_unknown_mode;
+	}
 	server->event_id = 0;
 
 	server->sessions = map_create(4096, NULL, NULL, __gmalloc_pool);
@@ -212,6 +243,8 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	return server;
 
 error_map_create:
+
+error_unknown_mode:
 	free(server);
 
 error_server_alloc:
@@ -220,14 +253,20 @@ error_server_alloc:
 }
 
 bool server_free(Server* server) {
- //	ListIterator iter;
- //	list_iterator_init(&iter, server->services);
- //	while(list_iterator_has_next(&iter)) {
- //		Service* service = list_iterator_next(&iter);
- //		list_remove_data(service->servers, server);
- //	}
+	uint32_t count = ni_count();
+	for(int i = 0; i < count; i++) {
+		NetworkInterface* service_ni = ni_get(i);
+		Service* service = ni_config_get(service_ni, PN_LB_SERVICE);
 
- //	list_destroy(server->services);
+		if(service == NULL)
+			continue;
+
+		if(list_remove_data(service->enable_servers, server))
+			continue;
+		else if(list_remove_data(service->disable_servers, server))
+			continue;
+	}
+
 	free(server);
 
 	return true;
@@ -253,7 +292,7 @@ bool server_add(NetworkInterface* ni, Server* server) {
 		if(private_interface == NULL)
 			continue;
 
-		list_add(service->servers, server);
+		list_add(service->enable_servers, server);
 	}
 
 	Map* servers = ni_config_get(ni, PN_LB_SERVERS);
@@ -265,6 +304,18 @@ bool server_add(NetworkInterface* ni, Server* server) {
 	}
 
 	return true;
+}
+
+Session* server_get_session(NetworkInterface* ni, uint8_t protocol, uint32_t daddr, uint16_t dport) {
+	Map* sessions = ni_config_get(ni, PN_LB_SESSIONS);
+	uint64_t key = ((uint64_t)protocol << 48 | (uint64_t)daddr << 16 | (uint64_t)dport);
+
+	Session* session = map_get(sessions, (void*)key);
+
+	if(session)
+		session_recharge(session);
+
+	return session;
 }
 
 void server_is_remove_grace(Server* server) {
@@ -295,6 +346,17 @@ bool server_remove(Server* server, uint64_t wait) {
 
 		return false;
 	}
+	bool server_delete0_event(void* context) {
+		Server* server = context;
+
+		Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+		if(map_is_empty(sessions)) {
+			server_remove_force(server);
+			return false;
+		}
+
+		return true;
+	}
 
 	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
 	if(map_is_empty(sessions)) {
@@ -303,8 +365,22 @@ bool server_remove(Server* server, uint64_t wait) {
 	} else {
 		server->state = LB_SERVER_STATE_REMOVING;
 
-		if(wait != 0)
+		uint32_t count = ni_count();
+		for(int i = 0; i < count; i++) {
+			NetworkInterface* service_ni = ni_get(i);
+			Service* service = ni_config_get(service_ni, PN_LB_SERVICE);
+
+			if(service == NULL)
+				continue;
+
+			if(list_remove_data(service->enable_servers, server))
+				list_add(service->disable_servers, server);
+		}
+
+		if(wait)
 			server->event_id = event_timer_add(server_delete_event, server, wait, 0);
+		else
+			server->event_id = event_timer_add(server_delete0_event, server, 1000000, 1000000);
 
 		return true;
 	}

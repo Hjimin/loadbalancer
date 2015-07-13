@@ -1,7 +1,9 @@
+#ifndef __SESSION_H__
+#define __SESSION_H__
+
 #include <net/ni.h>
 
-#include "service.h"
-#include "server.h"
+#include "interface.h"
 
 #define SESSION_IN	1
 #define SESSION_OUT	2
@@ -10,9 +12,9 @@
 
 typedef struct Session{
 	Interface*	client_interface;
-	Service*	service;
+	Interface*	service_interface;
 	Interface*	private_interface;
-	Server*		server;
+	Interface*	server_interface;
 
 	uint64_t	event_id;
 	bool		fin;
@@ -22,9 +24,8 @@ typedef struct Session{
 	bool(*session_free)(struct Session* session);
 } Session;
 
-Session* session_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport);
-Session* session_get(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport);
+bool session_recharge(Session* session);
 bool session_free(Session* session);
-Session* session_get_from_service(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport);
-Session* session_get_from_server(NetworkInterface* ni, uint8_t protocol, uint32_t daddr, uint16_t dport);
 bool session_set_fin(Session* session);
+
+#endif /*__SESSION_H__*/
