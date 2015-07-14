@@ -168,6 +168,7 @@ bool server_icmp_process(Packet* packet) {
 	List* private_interfaces = ni_config_get(packet->ni, PN_LB_PRIVATE_INTERFACES);
 	if(list_is_empty(private_interfaces))
 		return false;
+
 	ListIterator iter;
 	list_iterator_init(&iter, private_interfaces);
 	while(list_iterator_has_next(&iter)) {
@@ -198,12 +199,16 @@ bool server_icmp_process(Packet* packet) {
 
 Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	Server* server = (Server*)malloc(sizeof(Server));
-	if(server == NULL) {
+	if(!server) {
 		printf("Can'nt allocation server\n");
 		goto error_server_alloc;
 	}
 
 	server->server_interface = server_interface;
+	server->server_interface->sessions = map_create(4096, NULL, NULL, __gmalloc_pool);
+	if(!server->server_interface->sessions)
+		goto error_server_sessions_map_create;
+
 	server->state = LB_SERVER_STATE_OK;
 	server->mode = mode;
 	server->weight = 1;
@@ -236,15 +241,12 @@ Server* server_alloc(Interface* server_interface, uint8_t mode) {
 	}
 	server->event_id = 0;
 
-	server->sessions = map_create(4096, NULL, NULL, __gmalloc_pool);
-	if(!server->sessions)
-		goto error_map_create;
-		
 	return server;
 
-error_map_create:
-
 error_unknown_mode:
+	map_destroy(server->server_interface->sessions);
+
+error_server_sessions_map_create:
 	free(server);
 
 error_server_alloc:
@@ -258,7 +260,7 @@ bool server_free(Server* server) {
 		NetworkInterface* service_ni = ni_get(i);
 		Service* service = ni_config_get(service_ni, PN_LB_SERVICE);
 
-		if(service == NULL)
+		if(!service)
 			continue;
 
 		if(list_remove_data(service->enable_servers, server))
@@ -285,11 +287,11 @@ bool server_add(NetworkInterface* ni, Server* server) {
 		NetworkInterface* service_ni = ni_get(i);
 		Service* service = ni_config_get(service_ni, PN_LB_SERVICE);
 
-		if(service == NULL)
+		if(!service)
 			continue;
 
 		Interface* private_interface = map_get(service->private_interfaces, ni);
-		if(private_interface == NULL)
+		if(!private_interface)
 			continue;
 
 		list_add(service->enable_servers, server);
@@ -370,7 +372,7 @@ bool server_remove(Server* server, uint64_t wait) {
 			NetworkInterface* service_ni = ni_get(i);
 			Service* service = ni_config_get(service_ni, PN_LB_SERVICE);
 
-			if(service == NULL)
+			if(!service)
 				continue;
 
 			if(list_remove_data(service->enable_servers, server))
@@ -456,14 +458,14 @@ void server_dump() {
 		while(map_iterator_has_next(&iter)) {
 			MapEntry* entry = map_iterator_next(&iter);
 			Server* server = entry->data;
-			if(server == NULL)
+			if(!server)
 				continue;
 
 			print_state(server->state);
 			print_addr_port(server->server_interface->addr, server->server_interface->port);
 			print_mode(server->mode);
 			print_ni_num(server->server_interface->ni_num);
-			print_session_count(server->sessions);
+			print_session_count(server->server_interface->sessions);
 			printf("\n");
 		}
 	}

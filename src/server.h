@@ -26,7 +26,7 @@ typedef struct Server{
 	uint64_t	event_id;
 	Map*		sessions;
 
-	Session*	(*get_session)(struct Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
+	Session*	(*get_session)(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
 } Server;
 
 bool server_arp_process(Packet* packet);

@@ -19,17 +19,17 @@ static bool dnat_udp_pack(Session* session, Packet* packet);
 static bool dnat_tcp_unpack(Session* session, Packet* packet);
 static bool dnat_udp_unpack(Session* session, Packet* packet);
 
-Session* dnat_tcp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
+Session* dnat_tcp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
 	Session* session = malloc(sizeof(Session));
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server->server_interface;
+	session->server_interface = server_interface;
 	session->service_interface = service_interface;
 	session->client_interface = client_interface;
-	session->private_interface = NULL;
+	session->private_interface = interface_create(IP_PROTOCOL_TCP, client_interface->addr, client_interface->port, server_interface->ni_num);
 
 	session->loadbalancer_pack = dnat_tcp_pack;
 	session->loadbalancer_unpack = dnat_tcp_unpack;
@@ -38,17 +38,17 @@ Session* dnat_tcp_session_alloc(Server* server, Map* private_interfaces, Interfa
 	return session;
 }
 
-Session* dnat_udp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
+Session* dnat_udp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
 	Session* session = malloc(sizeof(Session));
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server->server_interface;
+	session->server_interface = server_interface;
 	session->service_interface = service_interface;
 	session->client_interface = client_interface;
-	session->private_interface = NULL;
+	session->private_interface = interface_create(IP_PROTOCOL_UDP, client_interface->addr, client_interface->port, server_interface->ni_num);
 
 	session->loadbalancer_pack = dnat_udp_pack;
 	session->loadbalancer_unpack = dnat_udp_unpack;
@@ -59,6 +59,7 @@ Session* dnat_udp_session_alloc(Server* server, Map* private_interfaces, Interfa
 
 static bool dnat_free(Session* session) {
 	interface_delete(session->client_interface);
+	interface_delete(session->private_interface);
 	free(session);
 
 	return true;
@@ -77,9 +78,8 @@ static bool dnat_tcp_pack(Session* session, Packet* packet) {
 	tcp->destination = endian16(server_interface->port);
 
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
-	if(session->fin && tcp->ack) {
+	if(session->fin && tcp->ack)
 		session_free(session);
-	}
 
 	return true;
 }

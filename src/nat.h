@@ -5,7 +5,7 @@
 #include "server.h"
 #include "interface.h"
 
-Session* nat_tcp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
-Session* nat_udp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
+Session* nat_tcp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
+Session* nat_udp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
 
 #endif /*__NAT_H__*/

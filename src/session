@@ -1,0 +1,50 @@
+nat.c:29:	session->server_interface = server->server_interface;
+nat.c:33:	Interface* private_interface = map_get(private_interfaces, server->server_interface->ni);
+nat.c:62:	session->server_interface = server->server_interface;
+nat.c:66:	Interface* private_interface = map_get(private_interfaces, server->server_interface->ni);
+service.c:76:			if(server->state == LB_SERVER_STATE_OK)
+service.c:78:			else if(server->state == LB_SERVER_STATE_REMOVING)
+service.c:142:	Session* session = server->get_session(server, service->private_interfaces, service->service_interface, client_interface);
+service.c:154:	sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+service.c:156:	if(server->mode == LB_MODE_NAT)
+service.c:165:	if(!map_put(server->server_interface->sessions, (void*)key2, session))
+dnat.c:29:	session->server_interface = server->server_interface;
+dnat.c:48:	session->server_interface = server->server_interface;
+dr.c:22:	session->server_interface = server->server_interface;
+schedule.c:28:		whole_weight += server->weight;
+schedule.c:35:		if(_index < server->weight)
+schedule.c:38:			_index -= server->weight;
+schedule.c:75:		if(map_size(_server->server_interface->sessions) < session_count)
+server.c:206:	server->server_interface = server_interface;
+server.c:207:	server->state = LB_SERVER_STATE_OK;
+server.c:208:	server->mode = mode;
+server.c:209:	server->weight = 1;
+server.c:214:					server->get_session = nat_tcp_session_alloc;
+server.c:217:					server->get_session = nat_udp_session_alloc;
+server.c:224:					server->get_session = dnat_tcp_session_alloc;
+server.c:227:					server->get_session = dnat_udp_session_alloc;
+server.c:232:			server->get_session = dr_session_alloc;
+server.c:237:	server->event_id = 0;
+server.c:293:	Interface* server_interface = server->server_interface;
+server.c:316:	if(server->state == LB_SERVER_STATE_OK)
+server.c:319:	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+server.c:321:		if(server->event_id != 0) {
+server.c:322:			event_timer_remove(server->event_id);
+server.c:323:			server->event_id = 0;
+server.c:327:		Interface* server_interface = server->server_interface;
+server.c:346:		Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+server.c:355:	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+server.c:360:		server->state = LB_SERVER_STATE_REMOVING;
+server.c:375:			server->event_id = event_timer_add(server_delete_event, server, wait, 0);
+server.c:377:			server->event_id = event_timer_add(server_delete0_event, server, 1000000, 1000000);
+server.c:384:	if(server->event_id != 0) {
+server.c:385:		event_timer_remove(server->event_id);
+server.c:386:		server->event_id = 0;
+server.c:389:	Map* sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+server.c:392:		Interface* server_interface = server->server_interface;
+server.c:401:	server->state = LB_SERVER_STATE_REMOVING;
+server.c:456:			print_state(server->state);
+server.c:457:			print_addr_port(server->server_interface->addr, server->server_interface->port);
+server.c:458:			print_mode(server->mode);
+server.c:459:			print_ni_num(server->server_interface->ni_num);
+server.c:460:			print_session_count(server->server_interface->sessions);

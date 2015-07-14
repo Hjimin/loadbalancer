@@ -27,5 +27,7 @@ typedef struct Session{
 bool session_recharge(Session* session);
 bool session_free(Session* session);
 bool session_set_fin(Session* session);
+uint64_t session_get_private_key(Session* session);
+uint64_t session_get_client_key(Session* session);
 
 #endif /*__SESSION_H__*/

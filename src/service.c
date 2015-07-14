@@ -16,7 +16,7 @@
 extern void* __gmalloc_pool;
 Service* service_alloc(Interface* service_interface, Interface** private_interfaces, uint8_t private_interface_count, uint8_t schedule) {
 	Service* service = (Service*)malloc(sizeof(Service));
-	if(service == NULL) {
+	if(!service) {
 		goto error_service_alloc;
 	}
 
@@ -139,26 +139,25 @@ Session* service_alloc_session(NetworkInterface* ni, uint8_t protocol, uint32_t 
 	if(!server)
 		goto error_get_server;
 
-	Session* session = server->get_session(server, service->private_interfaces, service->service_interface, client_interface);
+	Session* session = server->get_session(server->server_interface, service->private_interfaces, service->service_interface, client_interface);
 	if(!session)
 		goto error_get_session;
 
+	//Add to Service Interface NI
 	Map* sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
-	uint64_t key1 = (uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport;
-	if(!map_put(sessions, (void*)key1, session))
+	uint64_t client_key = session_get_client_key(session);
+	if(!map_put(sessions, (void*)client_key, session))
 		goto error_session_map_put1;
 
-	sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
-	uint64_t key2;
-	if(server->mode == LB_MODE_NAT)
-		key2 = (uint64_t)session->private_interface->protocol << 48 | (uint64_t)session->private_interface->addr << 16 | (uint64_t)session->private_interface->port;
-	else
-		key2 = (uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport;
 
-	if(!map_put(sessions, (void*)key2, session))
+	//Add to Server Interface NI
+	sessions = ni_config_get(server->server_interface->ni, PN_LB_SESSIONS);
+	uint64_t private_key = session_get_private_key(session);
+	if(!map_put(sessions, (void*)private_key, session))
 		goto error_session_map_put2;
 
-	if(!map_put(server->sessions, (void*)key2, session))
+	//Add to Server
+	if(!map_put(server->server_interface->sessions, (void*)private_key, session))
 		goto error_session_map_put3;
 
 	session->fin = false;
@@ -168,11 +167,11 @@ Session* service_alloc_session(NetworkInterface* ni, uint8_t protocol, uint32_t 
 	return session;
 
 error_session_map_put3:
-	map_remove(sessions, (void*)key2);
+	map_remove(sessions, (void*)private_key);
 
 error_session_map_put2:
 	sessions = ni_config_get(service->service_interface->ni, PN_LB_SESSIONS);
-	map_remove(sessions, (void*)key1);
+	map_remove(sessions, (void*)client_key);
 
 error_session_map_put1:
 	if(session->private_interface)

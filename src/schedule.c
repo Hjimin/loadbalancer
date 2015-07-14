@@ -72,7 +72,7 @@ void* schedule_least(Service* service, void* _client_interface) {
 	while(list_iterator_has_next(&iter)) {
 		Server* _server = list_iterator_next(&iter);
 
-		if(map_size(_server->sessions) < session_count)
+		if(map_size(_server->server_interface->sessions) < session_count)
 			server = _server;
 	}
 

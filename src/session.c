@@ -38,21 +38,24 @@ bool session_free(Session* session) {
 		session->event_id = 0;
 	}
 
-	Map* sessions = ni_config_get(session->client_interface->ni, PN_LB_SESSIONS);
-	if(!map_remove(sessions, (void*)((uint64_t)session->client_interface->protocol << 48 | (uint64_t)session->client_interface->addr << 16 | (uint64_t)session->client_interface->port))) {
+	//Remove from Service Interface NI
+	Map* sessions = ni_config_get(session->service_interface->ni, PN_LB_SESSIONS);
+	uint64_t client_key = session_get_client_key(session);
+	if(!map_remove(sessions, (void*)client_key)) {
 		printf("Can'nt remove session from servers\n");
 		goto error_session_free1;
 	}
 
-	Interface* private_interface = session->private_interface;
-	sessions = ni_config_get(private_interface->ni, PN_LB_SESSIONS);
-	uint64_t key = (uint64_t)private_interface->protocol << 48 | (uint64_t)private_interface->addr << 16 | (uint64_t)private_interface->port;
-	if(!map_remove(sessions, (void*)key)) {
+	//Remove from Server NI
+	sessions = ni_config_get(session->server_interface->ni, PN_LB_SESSIONS);
+	uint64_t private_key = session_get_private_key(session);
+	if(!map_remove(sessions, (void*)private_key)) {
 		printf("Can'nt remove session from private ni\n");
 		goto error_session_free2;
 	}
 
-	if(!map_remove(session->server_interface->sessions, (void*)key)) {
+	//Remove from Server
+	if(!map_remove(session->server_interface->sessions, (void*)private_key)) {
 		printf("Can'nt remove session from servers\n");
 		goto error_session_free3;
 	}
@@ -90,4 +93,12 @@ bool session_set_fin(Session* session) {
 	}
 	
 	return true;
+}
+
+inline uint64_t session_get_private_key(Session* session) {
+	return (uint64_t)session->private_interface->protocol << 48 | (uint64_t)session->private_interface->addr << 16 | (uint64_t)session->private_interface->port;
+}
+
+inline uint64_t session_get_client_key(Session* session) {
+	return (uint64_t)session->client_interface->protocol << 48 | (uint64_t)session->client_interface->addr << 16 | (uint64_t)session->client_interface->port;
 }

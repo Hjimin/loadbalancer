@@ -19,18 +19,18 @@ static bool nat_udp_unpack(Session* session, Packet* packet);
 static bool nat_tcp_free(Session* session);
 static bool nat_udp_free(Session* session);
 
-Session* nat_tcp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
+Session* nat_tcp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
 	Session* session = malloc(sizeof(Session));
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server->server_interface;
+	session->server_interface = server_interface;
 	session->service_interface = service_interface;
 	session->client_interface = client_interface;
 
-	Interface* private_interface = map_get(private_interfaces, server->server_interface->ni);
+	Interface* private_interface = map_get(private_interfaces, server_interface->ni);
 
 	uint16_t tcp_port = interface_tcp_port_alloc(private_interface);
 	session->private_interface = interface_create(IP_PROTOCOL_TCP, private_interface->addr, tcp_port, private_interface->ni_num);
@@ -52,18 +52,18 @@ error_private_interface_create:
 	return NULL;
 }
 
-Session* nat_udp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
+Session* nat_udp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
 	Session* session = malloc(sizeof(Session));
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server->server_interface;
+	session->server_interface = server_interface;
 	session->service_interface = service_interface;
 	session->client_interface = client_interface;
 
-	Interface* private_interface = map_get(private_interfaces, server->server_interface->ni);
+	Interface* private_interface = map_get(private_interfaces, server_interface->ni);
 
 	uint16_t udp_port = interface_udp_port_alloc(private_interface);
 	session->private_interface = interface_create(IP_PROTOCOL_UDP, private_interface->addr, udp_port, private_interface->ni_num);

@@ -12,17 +12,17 @@ static bool dr_pack(Session* session, Packet* packet);
 static bool dr_unpack(Session* session, Packet* packet);
 static bool dr_session_free(Session* session);
 
-Session* dr_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
+Session* dr_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
 	Session* session = malloc(sizeof(Session));
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server->server_interface;
+	session->server_interface = server_interface;
 	session->service_interface = service_interface;
 	session->client_interface = client_interface;
-	session->private_interface = NULL;
+	session->private_interface = interface_create(client_interface->protocol, client_interface->addr, client_interface->port, client_interface->ni_num);
 
 	session->loadbalancer_pack = dr_pack;
 	session->loadbalancer_unpack = dr_unpack;
@@ -33,6 +33,7 @@ Session* dr_session_alloc(Server* server, Map* private_interfaces, Interface* se
 
 static bool dr_session_free(Session* session) {
 	interface_delete(session->client_interface);
+	interface_delete(session->private_interface);
 
 	free(session);
 

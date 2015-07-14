@@ -7,11 +7,11 @@ extern void* __gmalloc_pool;
 
 Interface* interface_create(uint8_t protocol, uint32_t addr, uint16_t port, uint8_t ni_num) {
 	NetworkInterface* ni = ni_get(ni_num);
-	if(ni == NULL)
+	if(!ni)
 		return NULL;
 
 	Interface* interface = malloc(sizeof(Interface));
-	if(interface == NULL)
+	if(!interface)
 		return NULL;
 
 	interface->protocol = protocol;
@@ -58,7 +58,7 @@ uint16_t interface_tcp_port_alloc(Interface* interface) {
 	while(map_contains(ports, (void*)(uint64_t)port)) {
 		if(++port < 49152)
 			port = 49152;
-	}	
+	}
 	
 	map_put(ports, (void*)(uint64_t)port, (void*)(uint64_t)port);
 	interface->tcp_next_port = port + 1;

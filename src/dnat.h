@@ -5,7 +5,7 @@
 #include "session.h"
 #include "interface.h"
 
-Session* dnat_tcp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
-Session* dnat_udp_session_alloc(Server* server, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
+Session* dnat_tcp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
+Session* dnat_udp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface);
 
 #endif /*__DNAT_H__*/
