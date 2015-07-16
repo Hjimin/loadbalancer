@@ -78,6 +78,7 @@ Server* server_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint
 	}
 	bzero(server, size);
 
+	server->endpoint.ni = ni;
 	server->endpoint.protocol = protocol;
 	server->endpoint.addr = addr;
 	server->endpoint.port = port;
@@ -304,23 +305,31 @@ void server_dump() {
 				(addr >> 8) & 0xff, addr & 0xff, port);
 	}
 	void print_ni_num(NetworkInterface* ni) {
-		printf("%d\t", (ni - ni_get(0)) / sizeof(NetworkInterface));
+		uint8_t count = ni_count();
+		for(int i = 0; i < count; i++) {
+			if(ni == ni_get(i))
+				printf("%d\t", i);
+		}
 	}
 	void print_session_count(Set* sessions) {
-		printf("%d\t", set_size(sessions));
+		if(sessions)
+			printf("%d\t", set_size(sessions));
+		else
+			printf("0\t");
 	}
 
 	printf("State\t\tAddr:Port\t\tMode\tNIC\tSessions\n");
 	uint8_t count = ni_count();
 	for(int i = 0; i < count; i++) {
 		Map* servers = ni_config_get(ni_get(i), SERVERS);
+		if(!servers)
+			continue;
+
 		MapIterator iter;
 		map_iterator_init(&iter, servers);
 		while(map_iterator_has_next(&iter)) {
 			MapEntry* entry = map_iterator_next(&iter);
 			Server* server = entry->data;
-			if(!server)
-				continue;
 
 			print_state(server->state);
 			print_addr_port(server->endpoint.addr, server->endpoint.port);

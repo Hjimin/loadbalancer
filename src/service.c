@@ -28,7 +28,7 @@ Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, ui
 			services = map_create(16, NULL, NULL, ni->pool);
 			if(!services)
 				return false;
-			if(ni_config_put(ni, SERVICES, services))
+			if(!ni_config_put(ni, SERVICES, services))
 				return false;
 		}
 
@@ -59,6 +59,7 @@ Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, ui
 
 	bzero(service, sizeof(Service));
 
+	service->endpoint.ni = ni;
 	service->endpoint.addr = addr;
 	service->endpoint.protocol = protocol;
 	service->endpoint.port = port;
@@ -204,14 +205,15 @@ bool service_add_private_addr(Service* service, NetworkInterface* ni, uint32_t a
 		}
 	}
 
-	List* servers = ni_config_get(ni, SERVERS);
+	Map* servers = ni_config_get(ni, SERVERS);
 
 	if(servers) {
-		ListIterator iter;
-		list_iterator_init(&iter, servers);
+		MapIterator iter;
+		map_iterator_init(&iter, servers);
 
-		while(list_iterator_has_next(&iter)) {
-			Server* server = list_iterator_next(&iter);
+		while(map_iterator_has_next(&iter)) {
+			MapEntry* entry = map_iterator_next(&iter);
+			Server* server = entry->data;
 
 			if(server->state == SERVER_STATE_ACTIVE) {
 				if(!list_add(service->active_servers, server))
@@ -227,16 +229,19 @@ bool service_add_private_addr(Service* service, NetworkInterface* ni, uint32_t a
 
 server_add_fail:
 	;
-	ListIterator iter;
-	list_iterator_init(&iter, servers);
+	MapIterator iter;
+	map_iterator_init(&iter, servers);
 
-	while(list_iterator_has_next(&iter)) {
-		Server* server = list_iterator_next(&iter);
+	while(map_iterator_has_next(&iter)) {
+		MapEntry* entry = map_iterator_next(&iter);
+		Server* server = entry->data;
 
 		if(server->state == SERVER_STATE_ACTIVE) {
 			list_remove_data(service->active_servers, server);
+			continue;
 		} else {
 			list_remove_data(service->deactive_servers, server);
+			continue;
 		}
 	}
 
@@ -505,11 +510,11 @@ bool service_remove_force(Service* service) {
 void service_dump() {
 	void print_state(uint8_t state) {
 		if(state == SERVICE_STATE_ACTIVE)
-			printf("OK\t\t");
+			printf("ACTIVE\t\t");
 		else if(state == SERVICE_STATE_DEACTIVE)
-			printf("Removing\t");
+			printf("DEACTIVE\t");
 		else
-			printf("Unnowkn\t");
+			printf("Unknown\t");
 	}
 	void print_protocol(uint8_t protocol) {
 		if(protocol == IP_PROTOCOL_TCP)
@@ -517,7 +522,7 @@ void service_dump() {
 		else if(protocol == IP_PROTOCOL_UDP)
 			printf("UDP\t\t");
 		else
-			printf("Unnowkn\t");
+			printf("Unknown\t");
 	}
 	void print_addr_port(uint32_t addr, uint16_t port) {
 		printf("%d.%d.%d.%d:%d\t", (addr >> 24) & 0xff, (addr >> 16) & 0xff,
@@ -537,7 +542,11 @@ void service_dump() {
 		}
 	}
 	void print_ni_num(NetworkInterface* ni) {
-		printf("%d\t", (ni - ni_get(0)) / sizeof(NetworkInterface));
+		uint8_t count = ni_count();
+		for(int i = 0; i < count; i++) {
+			if(ni == ni_get(i))
+				printf("%d\t", i);
+		}
 	}
 	void print_session_count(Map* sessions) {
 		if(sessions)
@@ -557,8 +566,6 @@ void service_dump() {
 	int count = ni_count();
 	for(int i = 0; i < count; i++) {
 		NetworkInterface* ni = ni_get(i);
-		if(ni == NULL)
-			continue;
 
 		Map* services = ni_config_get(ni, SERVICES);
 		if(!services)
