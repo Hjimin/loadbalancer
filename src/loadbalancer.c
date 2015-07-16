@@ -21,27 +21,6 @@ int lb_ginit() {
 	if(count < 2)
 		return -1;
 
-	for(int i = 0; i < count; i++) {
-		NetworkInterface* ni = ni_get(i);
-		Map* sessions = map_create(4096, NULL, NULL, __gmalloc_pool);
-		if(sessions == NULL) {
-			return -1;
-		}
-		ni_config_put(ni, PN_LB_SESSIONS, sessions);
-
-		Map* servers = map_create(4096, NULL, NULL, __gmalloc_pool);
-		if(servers == NULL) {
-			return -1;
-		}
-		ni_config_put(ni, PN_LB_SERVERS, servers);
-
-		List* private_interfaces = list_create(__gmalloc_pool);
-		if(private_interfaces == NULL) {
-			return -1;
-		}
-		ni_config_put(ni, PN_LB_PRIVATE_INTERFACES, private_interfaces);
-	}
-
 	return 0;
 }
 
@@ -54,12 +33,7 @@ void lb_loop() {
 	event_loop();
 }
 
-static bool process_service(Packet* packet) {
-	NetworkInterface* ni = packet->ni;
-
-	if(!service_get(ni))
-		return false;
-	
+bool lb_process(Packet* packet) {
 	if(arp_process(packet))
 		return true;
 	
@@ -70,15 +44,12 @@ static bool process_service(Packet* packet) {
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
 		
-		uint8_t protocol;
-		uint32_t saddr;
-		uint32_t daddr;
+		uint8_t protocol = ip->protocol;
+		uint32_t saddr = endian32(ip->source);
+		uint32_t daddr = endian32(ip->destination);
 		uint16_t sport;
 		uint16_t dport;
 
-		protocol = ip->protocol;
-		saddr = endian32(ip->source);
-		daddr = endian32(ip->destination);
 		switch(protocol) {
 			case IP_PROTOCOL_TCP:
 				;
@@ -96,78 +67,29 @@ static bool process_service(Packet* packet) {
 				return false;
 		}
 
-		Session* session = service_get_session(ni, protocol, saddr, sport);
+		//Service
+		Session* session = service_get_session(packet->ni, protocol, saddr, sport);
 		if(!session) {
-			session = service_alloc_session(ni, protocol, saddr, sport, daddr, dport);
+			session = service_alloc_session(packet->ni, protocol, saddr, sport, daddr, dport);
 		}
-	
-		if(!session)
-			return false;
-
-		NetworkInterface* server_ni = session->server_interface->ni;
-		session->loadbalancer_pack(session, packet);
-		ni_output(server_ni, packet);
-
-		return true;
-	}
-
-	return false;
-}
-
-static bool process_server(Packet* packet) {
-	NetworkInterface* ni = packet->ni;
-	
-	List* private_interfaces = ni_config_get(ni, PN_LB_PRIVATE_INTERFACES);
-	if(list_is_empty(private_interfaces))
-		return false;
-
-	if(server_arp_process(packet))
-		return true;
-	
-	if(server_icmp_process(packet))
-		return true;
-	
-	Ether* ether = (Ether*)(packet->buffer + packet->start);
-	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
-		IP* ip = (IP*)ether->payload;
 		
-		uint8_t protocol = ip->protocol;
-		uint32_t daddr = endian32(ip->destination);
-		uint16_t dport;
-
-		switch(protocol) {
-			case IP_PROTOCOL_TCP:
-				;
-				TCP* tcp = (TCP*)ip->body;
-				dport = endian16(tcp->destination);
-				break;
-			case IP_PROTOCOL_UDP:
-				;
-				UDP* udp = (UDP*)ip->body;
-				dport = endian16(udp->destination);
-				break;
-			default:
-				return false;
+		if(session) {
+			NetworkInterface* server_ni = session->server_endpoint->ni;
+			session->translate(session, packet);
+			ni_output(server_ni, packet);
+			return true;
 		}
 
-		Session* session = server_get_session(ni, protocol, daddr, dport);
-		if(!session)
-			return false;
-
-		NetworkInterface* client_ni = session->client_interface->ni;
-		session->loadbalancer_unpack(session, packet);
-		ni_output(client_ni, packet);
-
-		return true;
+		//Server
+		session = server_get_session(packet->ni, protocol, daddr, dport);
+		if(session) {
+			NetworkInterface* service_ni = session->service_endpoint->ni;
+			session->untranslate(session, packet);
+			ni_output(service_ni, packet);
+			return true;
+		}
+		return false;
 	}
-	
+
 	return false;
-}
-
-void lb_process(Packet* packet) {
-	if(!process_service(packet)) {
-		if(!process_server(packet)) {
-			ni_free(packet);
-		}
-	}
 }

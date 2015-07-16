@@ -1,9 +1,12 @@
+#ifndef __SCHEDULE_H__
+#define __SCHEDULE_H__
+
 #include "schedule.h"
 #include "server.h"
 #include "service.h"
 #include "endpoint.h"
 
-Server* schedule_round_robin(Service* service, uint32_t public_addr) {
+Server* schedule_round_robin(Service* service, Endpoint* public_endpoint) {
 	uint32_t count = list_size(service->active_servers);
 	RoundRobin* roundrobin = service->priv;
 	if(count == 0)
@@ -14,7 +17,7 @@ Server* schedule_round_robin(Service* service, uint32_t public_addr) {
 	return list_get(service->active_servers, index);
 }
 
-Server* schedule_weighted_round_robin(Service* service, uint32_t public_addr) {
+Server* schedule_weighted_round_robin(Service* service, Endpoint* public_endpoint) {
 	uint32_t count = list_size(service->active_servers);
 	RoundRobin* roundrobin = service->priv;
 	if(count == 0)
@@ -41,7 +44,7 @@ Server* schedule_weighted_round_robin(Service* service, uint32_t public_addr) {
 	return NULL;
 }
 
-Server* schedule_random(Service* service, uint32_t public_addr) {
+Server* schedule_random(Service* service, Endpoint* public_endpoint) {
 	inline uint64_t cpu_tsc() {
 		uint64_t time;
 		uint32_t* p = (uint32_t*)&time;
@@ -59,7 +62,7 @@ Server* schedule_random(Service* service, uint32_t public_addr) {
 	return list_get(service->active_servers, random_num);
 }
 
-Server* schedule_least(Service* service, uint32_t public_addr) {
+Server* schedule_least(Service* service, Endpoint* public_endpoint) {
 	uint32_t count = list_size(service->active_servers);
 	if(count == 0)
 		return NULL; 
@@ -72,23 +75,25 @@ Server* schedule_least(Service* service, uint32_t public_addr) {
 	while(list_iterator_has_next(&iter)) {
 		Server* _server = list_iterator_next(&iter);
 
-		if(set_size(_server->sessions) < session_count)
+		if(map_size(_server->server_interface->sessions) < session_count)
 			server = _server;
 	}
 
 	return server;
 }
 
-Server* schedule_source_ip_hash(Service* service, uint32_t public_addr) {
+Server* schedule_source_ip_hash(Service* service, Endpoint* public_endpoint) {
+	Interface* client_interface = _client_interface;
 	uint32_t count = list_size(service->active_servers);
 	if(count == 0)
 		return NULL;
 
-	uint32_t index = public_addr % count;
+	uint32_t index = client_interface->addr % count;
 
 	return list_get(service->active_servers, index);
 }
 
 Server* schedule_min_request_time(Service* service) {
-	return NULL;
+
 }
+#endif /*__SCHEDULE_H__*/

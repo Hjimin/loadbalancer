@@ -1,11 +1,11 @@
 .PHONY: run all clean
 
-CFLAGS = -I ../../include -O2 -g -Wall -Werror -m64 -ffreestanding -fno-stack-protector -std=gnu99
+CFLAGS = -I ../../include -I include -O2 -g -Wall -Werror -m64 -ffreestanding -fno-stack-protector -std=gnu99
 
 DIR = obj
 
-OBJS = obj/main.o obj/loadbalancer.o obj/session.o obj/service.o obj/server.o obj/interface.o \
-       obj/nat.o obj/dnat.o obj/dr.o obj/schedule.o
+OBJS = obj/main.o obj/loadbalancer.o obj/session.o obj/service.o obj/server.o \
+       obj/nat.o obj/dnat.o obj/dr.o obj/schedule.o obj/endpoint.o
 
 
 LIBS = ../../lib/libpacketngin.a

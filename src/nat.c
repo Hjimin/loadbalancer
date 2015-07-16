@@ -1,5 +1,7 @@
 #include <stdio.h>
-#include <malloc.h>
+#define DONT_MAKE_WRAPPER
+#include <_malloc.h>
+#undef DONT_MAKE_WRAPPER
 #include <util/map.h>
 #include <net/packet.h>
 #include <net/ether.h>
@@ -9,116 +11,104 @@
 #include <net/udp.h>
 
 #include "nat.h"
-#include "interface.h"
+#include "endpoint.h"
 #include "session.h"
 
-static bool nat_tcp_pack(Session* session, Packet* packet);
-static bool nat_udp_pack(Session* session, Packet* packet);
-static bool nat_tcp_unpack(Session* session, Packet* packet);
-static bool nat_udp_unpack(Session* session, Packet* packet);
+static bool nat_tcp_translate(Session* session, Packet* packet);
+static bool nat_udp_translate(Session* session, Packet* packet);
+static bool nat_tcp_untranslate(Session* session, Packet* packet);
+static bool nat_udp_untranslate(Session* session, Packet* packet);
 static bool nat_tcp_free(Session* session);
 static bool nat_udp_free(Session* session);
 
-Session* nat_tcp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
-	Session* session = malloc(sizeof(Session));
+Session* nat_tcp_session_alloc(Server* server, Endpoint* service_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr) {
+	Session* session = __malloc(sizeof(Session), server->ni->pool);
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server_interface;
-	session->service_interface = service_interface;
-	session->client_interface = client_interface;
+	session->service_ni = service->ni;
+	session->server_ni = server->ni;
 
-	Interface* private_interface = map_get(private_interfaces, server_interface->ni);
+	session->service_endpoint = service_endpoint;
+	session->server_endpoint = server->server_endpoint;
 
-	uint16_t tcp_port = interface_tcp_port_alloc(private_interface);
-	session->private_interface = interface_create(IP_PROTOCOL_TCP, private_interface->addr, tcp_port, private_interface->ni_num);
-	if(!session->private_interface) {
-		interface_tcp_port_free(private_interface, tcp_port);
+	session->public_endpoint.protocol = IP_PROTOCOL_TCP;
+	session->public_endpoint.addr = public_addr;
+	session->public_endpoint.port = public_port;
 
-		goto error_private_interface_create;
-	}
+	session->private_endpoint.protocol = IP_PROTOCOL_TCP;
+	session->private_endpoint.addr = private_addr;
+	session->private_endpoint.port = tcp_port_alloc(server->ni, private_addr);
 
-	session->loadbalancer_pack = nat_tcp_pack;
-	session->loadbalancer_unpack = nat_tcp_unpack;
-	session->session_free = nat_tcp_free;
+	session->event_id = 0;
+	session->fin = false;
+
+	session->translate = nat_tcp_translate;
+	session->untranslate = nat_tcp_untranslate;
+	session->free = nat_tcp_free;
 
 	return session;
-
-error_private_interface_create:
-	free(session);
-
-	return NULL;
 }
 
-Session* nat_udp_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
-	Session* session = malloc(sizeof(Session));
+Session* nat_udp_session_alloc(Server* server, Endpoint* service_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr) {
+	Session* session = __malloc(sizeof(Session), server->ni->pool);
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server_interface;
-	session->service_interface = service_interface;
-	session->client_interface = client_interface;
+	session->service_ni = service->ni;
+	session->server_ni = server->ni;
 
-	Interface* private_interface = map_get(private_interfaces, server_interface->ni);
+	session->service_endpoint = service_endpoint;
+	session->server_endpoint = server_endpoint;
 
-	uint16_t udp_port = interface_udp_port_alloc(private_interface);
-	session->private_interface = interface_create(IP_PROTOCOL_UDP, private_interface->addr, udp_port, private_interface->ni_num);
-	if(!session->private_interface) {
-		interface_udp_port_free(private_interface, udp_port);
+	session->public_endpoint.protocol = IP_PROTOCOL_UDP;
+	session->public_endpoint.addr = public_addr;
+	session->public_endpoint.port = public_port;
 
-		goto error_private_interface_create;
-	}
+	session->private_endpoint.protocol = IP_PROTOCOL_UDP;
+	session->private_endpoint.addr = private_addr;
+	session->private_endpoint.port = udp_port_alloc(server->ni, private_addr);
 
-	session->loadbalancer_pack = nat_udp_pack;
-	session->loadbalancer_unpack = nat_udp_unpack;
-	session->session_free = nat_udp_free;
+	session->event_id = 0;
+	session->fin = false;
+
+	session->translate = nat_udp_translate;
+	session->untranslate = nat_udp_untranslate;
+	session->free = nat_udp_free;
 
 	return session;
-
-error_private_interface_create:
-	free(session);
-
-	return NULL;
 }
 
 static bool nat_tcp_free(Session* session) {
-	Interface* private_interface = session->private_interface;
-	interface_tcp_port_free(private_interface, private_interface->port);
-	interface_delete(session->private_interface);
-	interface_delete(session->client_interface);
-
+	tcp_port_free(session->server_ni, session->private_endpoint.port);
 	free(session);
 
 	return true;
 }
 
 static bool nat_udp_free(Session* session) {
-	Interface* private_interface = session->private_interface;
-	interface_udp_port_free(private_interface, private_interface->port);
-	interface_delete(session->private_interface);
-	interface_delete(session->client_interface);
-
+	udp_port_free(session->server_ni, session->private_endpoint.port);
 	free(session);
 
 	return true;
 }
 
-static bool nat_tcp_pack(Session* session, Packet* packet) {
-	Interface* server_interface = session->server_interface;
+static bool nat_tcp_translate(Session* session, Packet* packet) {
+	Endpoint* server_endpoint = session->server_endpoint;
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	IP* ip = (IP*)ether->payload;
 	TCP* tcp = (TCP*)ip->body;
 
-	ether->smac = endian48(server_interface->ni->mac);
-	ether->dmac = endian48(server_arp_get_mac(server_interface->ni, session->private_interface->addr, server_interface->addr));
-	ip->source = endian32(session->private_interface->addr);
-	ip->destination = endian32(server_interface->addr);
-	tcp->source = endian16(session->private_interface->port);
-	tcp->destination = endian16(server_interface->port);
+	ether->smac = endian48(session->server_ni->mac);
+	ether->dmac = endian48(arp_get_mac(session->server_ni, session->private_endpoint.addr, server_endpoint->addr));
+	ip->source = endian32(session->private_endpoint.addr);
+	ip->destination = endian32(server_endpoint->addr);
+	tcp->source = endian16(session->private_endpoint.port);
+	tcp->destination = endian16(server_endpoint->port);
 
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 	if(session->fin && tcp->ack) {
@@ -127,36 +117,36 @@ static bool nat_tcp_pack(Session* session, Packet* packet) {
 	return true;
 }
 
-static bool nat_udp_pack(Session* session, Packet* packet) {
-	Interface* server_interface = session->server_interface;
+static bool nat_udp_translate(Session* session, Packet* packet) {
+	Endpoint* server_endpoint = session->server_endpoint;
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	IP* ip = (IP*)ether->payload;
 	UDP* udp = (UDP*)ip->body;
 
-	ether->smac = endian48(server_interface->ni->mac);
-	ether->dmac = endian48(server_arp_get_mac(server_interface->ni, session->private_interface->addr, server_interface->addr));
-	ip->source = endian32(session->private_interface->addr);
-	ip->destination = endian32(server_interface->addr);
-	udp->source = endian16(session->private_interface->port);
-	udp->destination = endian16(server_interface->port);
+	ether->smac = endian48(session->server_ni->mac);
+	ether->dmac = endian48(arp_get_mac(session->server_ni, session->private_endpoint.addr, server_endpoint->addr));
+	ip->source = endian32(session->private_endpoint.addr);
+	ip->destination = endian32(server_endpoint->addr);
+	udp->source = endian16(session->private_endpoint.port);
+	udp->destination = endian16(server_endpoint->port);
 
 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	return true;
 }
 
-static bool nat_tcp_unpack(Session* session, Packet* packet) {
-	Interface* service_interface = session->service_interface;
+static bool nat_tcp_untranslate(Session* session, Packet* packet) {
+	Endpoint* service_endpoint = session->service_endpoint;
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	IP* ip = (IP*)ether->payload;
 	TCP* tcp = (TCP*)ip->body;
 
-	ether->smac = endian48(service_interface->ni->mac);
-	ether->dmac = endian48(arp_get_mac(session->client_interface->ni, session->client_interface->addr));
-	ip->source = endian32(service_interface->addr);
-	ip->destination = endian32(session->client_interface->addr);
-	tcp->source = endian16(service_interface->port);
-	tcp->destination = endian16(session->client_interface->port);
+	ether->smac = endian48(session->service_ni->mac);
+	ether->dmac = endian48(arp_get_mac(session->service_ni, session->public_endpoint.addr, session->private_endpoint.addr));
+	ip->source = endian32(service_endpoint->addr);
+	ip->destination = endian32(session->public_endpoint.addr);
+	tcp->source = endian16(service_endpoint->port);
+	tcp->destination = endian16(session->public_endpoint.port);
 
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 	if(tcp->fin) {
@@ -165,18 +155,18 @@ static bool nat_tcp_unpack(Session* session, Packet* packet) {
 	return true;
 }
 
-static bool nat_udp_unpack(Session* session, Packet* packet) {
-	Interface* service_interface = session->service_interface;
+static bool nat_udp_untranslate(Session* session, Packet* packet) {
+	Endpoint* service_endpoint = session->service_endpoint;
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	IP* ip = (IP*)ether->payload;
 	UDP* udp = (UDP*)ip->body;
 
-	ether->smac = endian48(service_interface->ni->mac);
-	ether->dmac = endian48(arp_get_mac(session->client_interface->ni, session->client_interface->addr));
-	ip->source = endian32(service_interface->addr);
-	ip->destination = endian32(session->client_interface->addr);
-	udp->source = endian16(service_interface->port);
-	udp->destination = endian16(session->client_interface->port);
+	ether->smac = endian48(session->service_ni->mac);
+	ether->dmac = endian48(arp_get_mac(session->service_ni, session->public_endpoint.addr, session->private_endpoint.addr));
+	ip->source = endian32(service_endpoint->addr);
+	ip->destination = endian32(session->public_endpoint.addr);
+	udp->source = endian16(service_endpoint->port);
+	udp->destination = endian16(session->public_endpoint.port);
 
 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 

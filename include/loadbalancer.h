@@ -9,6 +9,6 @@
 int lb_ginit();
 int lb_init();
 void lb_loop();
-void lb_process(Packet* packet);
+bool lb_process(Packet* packet);
 
 #endif /* __LOADBALANCER_H__ */

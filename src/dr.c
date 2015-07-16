@@ -1,56 +1,57 @@
 #include <stdio.h>
-#include <malloc.h>
+#define DONT_MAKE_WRAPPER
+#include <_malloc.h>
+#undef DONT_MAKE_WRAPPER
 #include <net/packet.h>
 #include <net/ether.h>
+#include <net/arp.h>
 
 #include "dr.h"
-#include "interface.h"
+#include "endpoint.h"
 #include "session.h"
 #include "server.h"
 
-static bool dr_pack(Session* session, Packet* packet);
-static bool dr_unpack(Session* session, Packet* packet);
-static bool dr_session_free(Session* session);
+static bool dr_translate(Session* session, Packet* packet);
+static bool dr_untranslate(Session* session, Packet* packet);
+static bool dr_free(Session* session);
 
-Session* dr_session_alloc(Interface* server_interface, Map* private_interfaces, Interface* service_interface, Interface* client_interface) {
-	Session* session = malloc(sizeof(Session));
+Session* dr_session_alloc(Endpoint* service_endpoint, Endpoint* server_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr) {
+	Session* session = __malloc(sizeof(Session), server_endpoint->ni->pool);
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->server_interface = server_interface;
-	session->service_interface = service_interface;
-	session->client_interface = client_interface;
-	session->private_interface = interface_create(client_interface->protocol, client_interface->addr, client_interface->port, client_interface->ni_num);
+	session->server_endpoint = server_endpoint;
+	session->service_endpoint = service_endpoint;
 
-	session->loadbalancer_pack = dr_pack;
-	session->loadbalancer_unpack = dr_unpack;
-	session->session_free = dr_session_free;
+	session->event_id = 0;
+	session->fin = false;
+
+	session->translate = dr_translate;
+	session->untranslate = dr_untranslate;
+	session->free = dr_free;
 
 	return session;
 }
 
-static bool dr_session_free(Session* session) {
-	interface_delete(session->client_interface);
-	interface_delete(session->private_interface);
-
-	free(session);
+static bool dr_free(Session* session) {
+	__free(session, session->server_endpoint->ni->pool);
 
 	return true;
 }
 
-static bool dr_pack(Session* session, Packet* packet) {
+static bool dr_translate(Session* session, Packet* packet) {
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 
-	Interface* server_interface = session->server_interface;
-	ether->smac = endian48(server_interface->ni->mac);
-	ether->dmac = endian48(server_arp_get_mac(server_interface->ni, session->private_interface->addr, server_interface->addr));
+	Endpoint* server_endpoint = session->server_endpoint;
+	ether->smac = endian48(server_endpoint->ni->mac);
+	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->private_endpoint.addr, server_endpoint->addr));
 
 	return true;
 }
 
-static bool dr_unpack(Session* session, Packet* packet) {
+static bool dr_untranslate(Session* session, Packet* packet) {
 	//do nothing
 	return true;
 }
