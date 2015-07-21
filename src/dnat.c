@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #define DONT_MAKE_WRAPPER
 #include <_malloc.h>
 #undef DONT_MAKE_WRAPPER
@@ -19,26 +20,22 @@ static bool dnat_udp_translate(Session* session, Packet* translateet);
 static bool dnat_tcp_untranslate(Session* session, Packet* translateet);
 static bool dnat_udp_untranslate(Session* session, Packet* translateet);
 
-Session* dnat_tcp_session_alloc(Endpoint* service_endpoint, Endpoint* server_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr) {
+Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, Endpoint* client_endpoint, Endpoint* private_endpoint) {
 	Session* session = __malloc(sizeof(Session), server_endpoint->ni->pool);
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->service_endpoint = service_endpoint;
+	session->public_endpoint = service_endpoint;
 	session->server_endpoint = server_endpoint;
 
-	session->public_endpoint.protocol = IP_PROTOCOL_TCP;
-	session->public_endpoint.addr = public_addr;
-	session->public_endpoint.port = public_port;
-
-	session->private_endpoint.protocol = IP_PROTOCOL_TCP;
-	session->private_endpoint.addr = public_addr;
-	session->private_endpoint.port = public_port;;
+	memcpy(&session->client_endpoint, client_endpoint, sizeof(Endpoint));
+	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
 	session->fin = false;
+
 	session->translate = dnat_tcp_translate;
 	session->untranslate = dnat_tcp_untranslate;
 	session->free = dnat_free;
@@ -46,26 +43,22 @@ Session* dnat_tcp_session_alloc(Endpoint* service_endpoint, Endpoint* server_end
 	return session;
 }
 
-Session* dnat_udp_session_alloc(Endpoint* service_endpoint, Endpoint* server_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr) {
+Session* dnat_udp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, Endpoint* client_endpoint, Endpoint* private_endpoint) {
 	Session* session = __malloc(sizeof(Session), server_endpoint->ni->pool);
 	if(!session) {
 		printf("Can'nt allocate Session\n");
 		return NULL;
 	}
 
-	session->service_endpoint = service_endpoint;
+	session->public_endpoint = service_endpoint;
 	session->server_endpoint = server_endpoint;
 
-	session->public_endpoint.protocol = IP_PROTOCOL_UDP;
-	session->public_endpoint.addr = public_addr;
-	session->public_endpoint.port = public_port;
-
-	session->private_endpoint.protocol = IP_PROTOCOL_UDP;
-	session->private_endpoint.addr = public_addr;
-	session->private_endpoint.port = public_port;;
+	memcpy(&session->client_endpoint, client_endpoint, sizeof(Endpoint));
+	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
 	session->fin = false;
+
 	session->translate = dnat_udp_translate;
 	session->untranslate = dnat_udp_untranslate;
 	session->free = dnat_free;
@@ -86,7 +79,7 @@ static bool dnat_tcp_translate(Session* session, Packet* translateet) {
 	TCP* tcp = (TCP*)ip->body;
 
 	ether->smac = endian48(server_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->public_endpoint.addr, server_endpoint->addr));
+	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->private_endpoint.addr, server_endpoint->addr));
 
 	ip->destination = endian32(server_endpoint->addr);
 	tcp->destination = endian16(server_endpoint->port);
@@ -105,7 +98,7 @@ static bool dnat_udp_translate(Session* session, Packet* translateet) {
 	UDP* udp = (UDP*)ip->body;
 
 	ether->smac = endian48(server_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->public_endpoint.addr, server_endpoint->addr));
+	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->private_endpoint.addr, server_endpoint->addr));
 
 	ip->destination = endian32(server_endpoint->addr);
 	udp->destination = endian16(server_endpoint->port);
@@ -116,15 +109,15 @@ static bool dnat_udp_translate(Session* session, Packet* translateet) {
 }
 
 static bool dnat_tcp_untranslate(Session* session, Packet* translateet) {
-	Endpoint* service_endpoint = session->service_endpoint;
+	Endpoint* public_endpoint = session->public_endpoint;
 	Ether* ether = (Ether*)(translateet->buffer + translateet->start);
 	IP* ip = (IP*)ether->payload;
 	TCP* tcp = (TCP*)ip->body;
 
-	ether->smac = endian48(service_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(service_endpoint->ni, endian32(ip->destination), session->public_endpoint.addr));
-	ip->source = endian32(service_endpoint->addr);
-	tcp->source = endian16(service_endpoint->port);
+	ether->smac = endian48(public_endpoint->ni->mac);
+	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, public_endpoint->addr, session->client_endpoint.addr));
+	//ip->source = endian32(public_endpoint->addr);
+	//tcp->source = endian16(public_endpoint->port);
 		
 	if(tcp->fin) {
 		session_set_fin(session);
@@ -136,15 +129,15 @@ static bool dnat_tcp_untranslate(Session* session, Packet* translateet) {
 }
 
 static bool dnat_udp_untranslate(Session* session, Packet* translateet) {
-	Endpoint* service_endpoint = session->service_endpoint;
+	Endpoint* public_endpoint = session->public_endpoint;
 	Ether* ether = (Ether*)(translateet->buffer + translateet->start);
 	IP* ip = (IP*)ether->payload;
-	UDP* udp = (UDP*)ip->body;
+	//UDP* udp = (UDP*)ip->body;
 
-	ether->smac = endian48(service_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(service_endpoint->ni, endian32(ip->destination), session->public_endpoint.addr));
-	ip->source = endian32(service_endpoint->addr);
-	udp->source = endian16(service_endpoint->port);
+	ether->smac = endian48(public_endpoint->ni->mac);
+	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, public_endpoint->addr, session->client_endpoint.addr));
+	//ip->source = endian32(public_endpoint->addr);
+	//udp->source = endian16(public_endpoint->port);
 
 	udp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 

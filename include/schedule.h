@@ -14,10 +14,10 @@ typedef struct _RoundRobin {
 	uint32_t robin;
 } RoundRobin;
 
-Server* schedule_round_robin(Service* service, uint32_t public_addr);
-Server* schedule_weighted_round_robin(Service* service, uint32_t public_addr);
-Server* schedule_random(Service* service, uint32_t public_addr);
-Server* schedule_least(Service* service, uint32_t public_addr);
-Server* schedule_source_ip_hash(Service* service, uint32_t public_addr);
+Server* schedule_round_robin(Service* service, Endpoint* client_endpoint);
+Server* schedule_weighted_round_robin(Service* service, Endpoint* client_endpoint);
+Server* schedule_random(Service* service, Endpoint* client_endpoint);
+Server* schedule_least(Service* service, Endpoint* client_endpoint);
+Server* schedule_source_ip_hash(Service* service, Endpoint* client_endpoint);
 
 #endif /*__SCHEDULE_H__*/

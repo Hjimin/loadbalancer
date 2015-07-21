@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #define DONT_MAKE_WRAPPER
 #include <_malloc.h>
 #undef DONT_MAKE_WRAPPER
@@ -15,7 +16,7 @@ static bool dr_translate(Session* session, Packet* packet);
 static bool dr_untranslate(Session* session, Packet* packet);
 static bool dr_free(Session* session);
 
-Session* dr_session_alloc(Endpoint* service_endpoint, Endpoint* server_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr) {
+Session* dr_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, Endpoint* client_endpoint, Endpoint* private_endpoint) {
 	Session* session = __malloc(sizeof(Session), server_endpoint->ni->pool);
 	if(!session) {
 		printf("Can'nt allocate Session\n");
@@ -23,7 +24,10 @@ Session* dr_session_alloc(Endpoint* service_endpoint, Endpoint* server_endpoint,
 	}
 
 	session->server_endpoint = server_endpoint;
-	session->service_endpoint = service_endpoint;
+	session->public_endpoint = service_endpoint;
+
+	memcpy(&session->client_endpoint, client_endpoint, sizeof(Endpoint));
+	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
 	session->fin = false;

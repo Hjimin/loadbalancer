@@ -69,7 +69,7 @@ static bool server_add(NetworkInterface* ni, Server* server) {
 	return true;
 }
 
-Server* server_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
+Server* server_alloc(Endpoint* server_endpoint) {
 	size_t size = sizeof(Server);
 	Server* server = (Server*)malloc(size);
 	if(!server) {
@@ -78,19 +78,15 @@ Server* server_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint
 	}
 	bzero(server, size);
 
-	server->endpoint.ni = ni;
-	server->endpoint.protocol = protocol;
-	server->endpoint.addr = addr;
-	server->endpoint.port = port;
+	memcpy(&server->endpoint, server_endpoint, sizeof(Endpoint));
 
 	server->state = SERVER_STATE_ACTIVE;
 	server->event_id = 0;
 	server_set_mode(server, MODE_NAT);
 
-	if(!server_add(ni, server))
+	if(!server_add(server->endpoint.ni, server))
 		goto error;
-
-	return server;
+return server;
 
 error:
 	return NULL;
@@ -159,22 +155,19 @@ bool server_free(Server* server) {
 	return true;
 }
 
-Server* server_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
-	Map* servers = ni_config_get(ni, SERVERS);
-	uint64_t key = (uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port;
+Server* server_get(Endpoint* server_endpoint) {
+	Map* servers = ni_config_get(server_endpoint->ni, SERVERS);
+	uint64_t key = (uint64_t)server_endpoint->protocol << 48 | (uint64_t)server_endpoint->addr << 16 | (uint64_t)server_endpoint->port;
 	Server* server = map_get(servers, (void*)key);
 
 	return server;
 }
 
-Session* server_get_session(NetworkInterface* ni, uint8_t protocol, uint32_t daddr, uint16_t dport) {
-	Map* sessions = ni_config_get(ni, SESSIONS);
-	uint64_t key = ((uint64_t)protocol << 48 | (uint64_t)daddr << 16 | (uint64_t)dport);
+Session* server_get_session(Endpoint* client_endpoint) {
+	Map* sessions = ni_config_get(client_endpoint->ni, SESSIONS);
+	uint64_t key = ((uint64_t)client_endpoint->protocol << 48 | (uint64_t)client_endpoint->addr << 16 | (uint64_t)client_endpoint->port);
 
 	Session* session = map_get(sessions, (void*)key);
-
-	if(session)
-		session_recharge(session);
 
 	return session;
 }
@@ -311,9 +304,9 @@ void server_dump() {
 				printf("%d\t", i);
 		}
 	}
-	void print_session_count(Set* sessions) {
+	void print_session_count(Map* sessions) {
 		if(sessions)
-			printf("%d\t", set_size(sessions));
+			printf("%d\t", map_size(sessions));
 		else
 			printf("0\t");
 	}

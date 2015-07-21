@@ -21,7 +21,7 @@
 
 extern void* __gmalloc_pool;
 
-Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
+Service* service_alloc(Endpoint* service_endpoint) {
 	bool service_add(NetworkInterface* ni, Service* service) {
 		Map* services = ni_config_get(ni, SERVICES);
 		if(!services) {
@@ -37,32 +37,28 @@ Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, ui
 		return map_put(services, (void*)key, service);
 	}
 	//add ip
-	if(!ni_ip_get(ni, addr)) { 
-		if(!ni_ip_add(ni, addr))
+	if(!ni_ip_get(service_endpoint->ni, service_endpoint->addr)) { 
+		if(!ni_ip_add(service_endpoint->ni, service_endpoint->addr))
 			return NULL;
 	}
 
 	//port alloc
-	if(protocol == IP_PROTOCOL_TCP) {
-		if(!tcp_port_alloc0(ni, addr, port))
+	if(service_endpoint->protocol == IP_PROTOCOL_TCP) {
+		if(!tcp_port_alloc0(service_endpoint->ni, service_endpoint->addr, service_endpoint->port))
 			goto port_alloc_fail;
-	} else if(protocol == IP_PROTOCOL_UDP) {
-		if(!udp_port_alloc0(ni, addr, port))
+	} else if(service_endpoint->protocol == IP_PROTOCOL_UDP) {
+		if(!udp_port_alloc0(service_endpoint->ni, service_endpoint->addr, service_endpoint->port))
 			goto port_alloc_fail;
 	} else
 		return NULL;
 
 	//service alloc
-	Service* service = __malloc(sizeof(Service), ni->pool);
+	Service* service = __malloc(sizeof(Service), service_endpoint->ni->pool);
 	if(!service)
 		goto service_alloc_fail;
 
 	bzero(service, sizeof(Service));
-
-	service->endpoint.ni = ni;
-	service->endpoint.addr = addr;
-	service->endpoint.protocol = protocol;
-	service->endpoint.port = port;
+	memcpy(&service->endpoint, service_endpoint, sizeof(Endpoint));
 
 	service->timeout = SERVICE_DEFAULT_TIMEOUT;
 	service->state = SERVICE_STATE_ACTIVE;
@@ -70,7 +66,7 @@ Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, ui
 	service_set_schedule(service, SCHEDULE_ROUND_ROBIN);
 
 	//add to service list
-	if(!service_add(ni, service))
+	if(!service_add(service_endpoint->ni, service))
 		goto service_add_fail;
 
 	return service;
@@ -78,18 +74,18 @@ Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, ui
 service_add_fail:
 service_alloc_fail:
 	//port free
-	if(service->endpoint.protocol == IP_PROTOCOL_TCP) {
-		tcp_port_free(ni, service->endpoint.addr, service->endpoint.port);
-	} else if(service->endpoint.protocol == IP_PROTOCOL_UDP) {
-		udp_port_free(ni, service->endpoint.addr, service->endpoint.port);
+	if(service_endpoint->protocol == IP_PROTOCOL_TCP) {
+		tcp_port_free(service_endpoint->ni, service_endpoint->addr, service_endpoint->port);
+	} else if(service_endpoint->protocol == IP_PROTOCOL_UDP) {
+		udp_port_free(service_endpoint->ni, service_endpoint->addr, service_endpoint->port);
 	}
 
 port_alloc_fail:
 	//delete if port is empty
 	;
-	IPv4Interface* interface = ni_ip_get(ni, addr);
+	IPv4Interface* interface = ni_ip_get(service_endpoint->ni, service_endpoint->addr);
 	if(set_is_empty(interface->tcp_ports) && set_is_empty(interface->udp_ports)) {
-		ni_ip_remove(ni, addr);
+		ni_ip_remove(service_endpoint->ni, service_endpoint->addr);
 	}
 
 	return false;
@@ -174,29 +170,31 @@ bool service_set_schedule(Service* service, uint8_t schedule) {
 	return true;
 }
 
-bool service_add_private_addr(Service* service, NetworkInterface* ni, uint32_t addr) {
+bool service_add_private_addr(Service* service, Endpoint* _private_endpoint) {
 	if(!service->private_endpoints) {
-		service->private_endpoints = map_create(16, NULL, NULL, ni->pool);
+		service->private_endpoints = map_create(16, NULL, NULL, service->endpoint.ni->pool);
 		if(!service->private_endpoints)
 			return false;
 	}
 
-	if(!map_put(service->private_endpoints, ni, (void*)(uintptr_t)addr))
-		return false;
+	ssize_t size = sizeof(Endpoint);
+	Endpoint* private_endpoint = __malloc(size, service->endpoint.ni->pool);
+	memcpy(private_endpoint, _private_endpoint, size);
 
-	if(!ni_ip_get(ni, addr)) {
-		if(!ni_ip_add(ni, addr)) {
-			map_remove(service->private_endpoints, ni);
+	if(!ni_ip_get(private_endpoint->ni, private_endpoint->addr)) {
+		if(!ni_ip_add(private_endpoint->ni, private_endpoint->addr)) {
+			map_remove(service->private_endpoints, private_endpoint->ni);
+			__free(private_endpoint, service->endpoint.ni->pool);
 			return false;
 		}
 	}
 
 	if(!service->active_servers) {
-		service->active_servers = list_create(ni->pool);
+		service->active_servers = list_create(service->endpoint.ni->pool);
 		if(!service->active_servers)
 			goto list_create_fail;
 
-		service->deactive_servers = list_create(ni->pool);
+		service->deactive_servers = list_create(service->endpoint.ni->pool);
 		if(!service->deactive_servers) {
 			list_destroy(service->active_servers);
 			service->active_servers = NULL;
@@ -205,7 +203,7 @@ bool service_add_private_addr(Service* service, NetworkInterface* ni, uint32_t a
 		}
 	}
 
-	Map* servers = ni_config_get(ni, SERVERS);
+	Map* servers = ni_config_get(private_endpoint->ni, SERVERS);
 
 	if(servers) {
 		MapIterator iter;
@@ -225,7 +223,14 @@ bool service_add_private_addr(Service* service, NetworkInterface* ni, uint32_t a
 		}
 	}
 
+	if(!map_put(service->private_endpoints, private_endpoint->ni, private_endpoint)) {
+		goto private_endpoint_put_fail;
+	}
+
 	return true;
+
+private_endpoint_put_fail:
+	service_remove_private_addr(service, private_endpoint->ni);
 
 server_add_fail:
 	;
@@ -246,12 +251,11 @@ server_add_fail:
 	}
 
 list_create_fail:
-	service_remove_private_addr(service, ni);
 
 	return false;
 }
 
-bool service_set_private_addr(Service* service, NetworkInterface* ni, uint32_t addr) {
+bool service_set_private_addr(Service* service, Endpoint* private_endpoint) {
 	return false;
 }
 
@@ -274,9 +278,11 @@ bool service_remove_private_addr(Service* service, NetworkInterface* ni) {
 	}
 
 	//Remove Address in NetworkInterface
-	uint32_t addr = (uint32_t)(uintptr_t)map_remove(service->private_endpoints, ni);
-	if(!addr)
+	Endpoint* private_endpoint = map_remove(service->private_endpoints, ni);
+	if(!private_endpoint)
 		return false;
+	uint32_t addr = private_endpoint->addr;
+	__free(private_endpoint, service->endpoint.ni->pool);
 
 	uint16_t count = ni_count();
 	for(int i = 0; i < count; i++) {
@@ -292,73 +298,89 @@ bool service_remove_private_addr(Service* service, NetworkInterface* ni) {
 			if(service == _service)
 				continue;
 
-			uint32_t _addr = (uint32_t)(uintptr_t)map_get(_service->private_endpoints, ni);
+			if(!_service->private_endpoints)
+				continue;
 
-			if(addr == _addr)
+			Endpoint* _private_endpoint = map_get(_service->private_endpoints, ni);
+
+			if(addr == _private_endpoint->addr)
 				return true;
 		}
 	}
-
+	
 	ni_ip_remove(ni, addr);
+
 	return true;
 }
 
-Session* service_get_session(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport) {
-	Map* sessions = ni_config_get(ni, SESSIONS);
-	Session* session = map_get(sessions, (void*)((uint64_t)protocol << 48 | (uint64_t)saddr << 16 | (uint64_t)sport));
+Session* service_get_session(Endpoint* client_endpoint) {
+	Map* sessions = ni_config_get(client_endpoint->ni, SESSIONS);
+	if(!sessions)
+		return NULL;
+
+	Session* session = map_get(sessions, (void*)((uint64_t)client_endpoint->protocol << 48 | (uint64_t)client_endpoint->addr << 16 | (uint64_t)client_endpoint->port));
 
 	return session;
 }
 
 
-Session* service_alloc_session(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport) {
-	Service* service = service_get(ni, protocol, daddr, dport);
+Session* service_alloc_session(Endpoint* service_endpoint, Endpoint* client_endpoint) {
+	Service* service = service_get(service_endpoint);
 	if(!service)
 		return NULL;
 
 	if(!service->sessions) {
-		service->sessions = set_create(4096, NULL, NULL, ni->pool);
+		service->sessions = map_create(4096, NULL, NULL, service->endpoint.ni->pool);
 		if(!service->sessions)
 			return NULL;
 	}
 
-	if(!((protocol == service->endpoint.protocol) && (daddr == service->endpoint.addr) && (dport == service->endpoint.port)))
+	if(!((client_endpoint->addr == service->endpoint.addr) && (client_endpoint->protocol == service->endpoint.protocol) && (client_endpoint->port == service->endpoint.port)))
 		return NULL;
 
 	if(service->state != SERVICE_STATE_ACTIVE)
 		return NULL;
 
-	Server* server = service->next(service, saddr);
+	Server* server = service->next(service, client_endpoint);
 	if(!server)
 		goto error_get_server;
-	if(!server->sessions) {
-		server->sessions = set_create(4096, NULL, NULL, ni->pool);
-		if(!server->sessions)
-			return NULL;
-	}
 
-	uint32_t private_addr = (uint32_t)(uintptr_t)map_get(service->private_endpoints, server->endpoint.ni);
-	Session* session = server->create(&(server->endpoint), &(service->endpoint), saddr, sport, private_addr);
+	Endpoint* private_endpoint = map_get(service->private_endpoints, server->endpoint.ni);
+	Session* session = server->create(&(server->endpoint), &(service->endpoint), client_endpoint, private_endpoint);
 	if(!session)
 		goto error_get_session;
 
+	//Add to Service
+	uint64_t public_key = session_get_public_key(session);
+	if(!service->sessions) {
+		service->sessions = map_create(4096, NULL, NULL, service->endpoint.ni->pool);
+		if(!service->sessions)
+			goto service_map_createa_fail;
+	}
+	if(!map_put(service->sessions, (void*)public_key, session))
+		goto error_session_map_put1;
+
 	//Add to Service Interface NI
 	Map* sessions = ni_config_get(service->endpoint.ni, SESSIONS);
-	uint64_t public_key = session_get_public_key(session);
 	if(!map_put(sessions, (void*)public_key, session))
 		goto error_session_map_put1;
 
+	uint64_t private_key = session_get_private_key(session);
+	//Add to Server
+	if(!server->sessions) {
+		server->sessions = map_create(4096, NULL, NULL, server->endpoint.ni->pool);
+		if(!server->sessions)
+			goto server_map_createa_fail;
+	}
+	if(!map_put(server->sessions, (void*)private_key, session))
+		goto error_session_map_put2;
 
 	//Add to Server Interface NI
 	sessions = ni_config_get(server->endpoint.ni, SESSIONS);
-	uint64_t private_key = session_get_private_key(session);
 	if(!map_put(sessions, (void*)private_key, session))
 		goto error_session_map_put2;
 
 
-	//Add to Server
-	//if(!map_put(server->server_interface->sessions, (void*)private_key, session))
-		//goto error_session_map_put3;
 
 	session->fin = false;
 	session->event_id = 0;
@@ -372,8 +394,12 @@ error_session_map_put2:
 	sessions = ni_config_get(service->endpoint.ni, SESSIONS);
 	map_remove(sessions, (void*)public_key);
 
+server_map_createa_fail:
+
 error_session_map_put1:
 	session->free(session);
+
+service_map_createa_fail:
 
 error_get_session:
 error_get_server:
@@ -383,7 +409,7 @@ error_get_server:
 
 bool service_free_session(Session* session) {
 	//Remove from Service Interface NI
-	Map* sessions = ni_config_get(session->service_endpoint->ni, SESSIONS);
+	Map* sessions = ni_config_get(session->public_endpoint->ni, SESSIONS);
 	uint64_t client_key = session_get_public_key(session);
 	if(!map_remove(sessions, (void*)client_key)) {
 		printf("Can'nt remove session from servers\n");
@@ -398,9 +424,9 @@ bool service_free_session(Session* session) {
 		goto session_free_fail;
 	}
 
-	Server* server = server_get(session->server_endpoint->ni, session->server_endpoint->protocol, session->server_endpoint->addr, session->server_endpoint->port);
+	Server* server = server_get(session->server_endpoint);
 	//Remove from Server
-	if(!set_remove(server->sessions, (void*)private_key)) {
+	if(!map_remove(server->sessions, (void*)private_key)) {
 		printf("Can'nt remove session from servers\n");
 		goto session_free_fail;
 	}
@@ -424,12 +450,12 @@ bool service_empty(NetworkInterface* ni) {
 	return map_is_empty(services);
 }
 
-Service* service_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port) {
-	Map* services = ni_config_get(ni, SERVICES);
+Service* service_get(Endpoint* service_endpoint) {
+	Map* services = ni_config_get(service_endpoint->ni, SERVICES);
 	if(!services)
 		return NULL;
 
-	uint64_t key = (uint64_t)protocol << 48 | (uint64_t)addr << 16 | (uint64_t)port;
+	uint64_t key = (uint64_t)service_endpoint->protocol << 48 | (uint64_t)service_endpoint->addr << 16 | (uint64_t)service_endpoint->port;
 
 	return map_get(services, (void*)key);
 }
@@ -478,6 +504,8 @@ bool service_remove(Service* service, uint64_t wait) {
 
 		return true;
 	}
+
+	return true;
 }
 
 bool service_remove_force(Service* service) {
@@ -535,6 +563,15 @@ void service_dump() {
 				break;
 			case SCHEDULE_RANDOM:
 				printf("Random\t\t");
+				break;
+			case SCHEDULE_LEAST:
+				printf("Least\t\t");
+				break;
+			case SCHEDULE_SOURCE_IP_HASH:
+				printf("Hash\t\t");
+				break;
+			case SCHEDULE_WEIGHTED_ROUND_ROBIN:
+				printf("Weight Round-Robin\t\t");
 				break;
 			default:
 				printf("Unnowkn\t");

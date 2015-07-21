@@ -62,5 +62,5 @@ inline uint64_t session_get_private_key(Session* session) {
 }
 
 inline uint64_t session_get_public_key(Session* session) {
-	return (uint64_t)session->public_endpoint.protocol << 48 | (uint64_t)session->public_endpoint.addr << 16 | (uint64_t)session->public_endpoint.port;
+	return (uint64_t)session->client_endpoint.protocol << 48 | (uint64_t)session->client_endpoint.addr << 16 | (uint64_t)session->client_endpoint.port;
 }

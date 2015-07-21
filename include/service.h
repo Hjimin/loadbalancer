@@ -27,28 +27,28 @@ typedef struct _Service {
 	List*		active_servers;
 	List*		deactive_servers;
 	
-	Set*		sessions;
+	Map*		sessions;
 
 	uint8_t		schedule;
-	Server*		(*next)(struct _Service*, uint32_t public_addr);
+	Server*		(*next)(struct _Service*, Endpoint* client_endpoint);
 	void*		priv;
 } Service;
 
 
-Service* service_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
+Service* service_alloc(Endpoint* service_endpoint);
 bool service_set_schedule(Service* service, uint8_t schedule);
 
-bool service_add_private_addr(Service* service, NetworkInterface* ni, uint32_t addr);
-bool service_set_private_addr(Service* service, NetworkInterface* ni, uint32_t addr);
+bool service_add_private_addr(Service* service, Endpoint* private_endpoint);
+bool service_set_private_addr(Service* service, Endpoint* private_endpoint);
 bool service_remove_private_addr(Service* service, NetworkInterface* ni);
 
 bool service_free(Service* service);
 
-Service* service_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
+Service* service_get(Endpoint* service_endpoint);
 bool service_empty(NetworkInterface* ni);
 
-Session* service_alloc_session(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport, uint32_t daddr, uint16_t dport);
-Session* service_get_session(NetworkInterface* ni, uint8_t protocol, uint32_t saddr, uint16_t sport);
+Session* service_alloc_session(Endpoint* service_endpoint, Endpoint* client_endpoint);
+Session* service_get_session(Endpoint* client_endpoint);
 bool service_free_session(Session* session);
 
 void service_is_remove_grace(Service* service);

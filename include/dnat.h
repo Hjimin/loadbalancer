@@ -5,7 +5,7 @@
 #include "endpoint.h"
 #include "session.h"
 
-Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr);
-Session* dnat_udp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr);
+Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, Endpoint* client_endpoint, Endpoint* private_endpoint);
+Session* dnat_udp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint, Endpoint* client_endpoint, Endpoint* private_endpoint);
 
 #endif /*__DNAT_H__*/

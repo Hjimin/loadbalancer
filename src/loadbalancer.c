@@ -44,33 +44,38 @@ bool lb_process(Packet* packet) {
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
 		
-		uint8_t protocol = ip->protocol;
-		uint32_t saddr = endian32(ip->source);
-		uint32_t daddr = endian32(ip->destination);
-		uint16_t sport;
-		uint16_t dport;
+		Endpoint destination_endpoint;
+		Endpoint source_endpoint;
 
-		switch(protocol) {
+		destination_endpoint.ni = packet->ni;
+		source_endpoint.ni = packet->ni;
+
+		source_endpoint.addr = endian32(ip->source);
+		destination_endpoint.addr = endian32(ip->destination);
+		destination_endpoint.protocol = ip->protocol;
+		source_endpoint.protocol = ip->protocol;
+
+		switch(ip->protocol) {
 			case IP_PROTOCOL_TCP:
 				;
 				TCP* tcp = (TCP*)ip->body;
-				sport = endian16(tcp->source);
-				dport = endian16(tcp->destination);
+				source_endpoint.port = endian16(tcp->source);
+				destination_endpoint.port = endian16(tcp->destination);
 				break;
 			case IP_PROTOCOL_UDP:
 				;
 				UDP* udp = (UDP*)ip->body;
-				sport = endian16(udp->source);
-				dport = endian16(udp->destination);
+				source_endpoint.port = endian16(udp->source);
+				destination_endpoint.port = endian16(udp->destination);
 				break;
 			default:
 				return false;
 		}
 
 		//Service
-		Session* session = service_get_session(packet->ni, protocol, saddr, sport);
+		Session* session = service_get_session(&source_endpoint);
 		if(!session) {
-			session = service_alloc_session(packet->ni, protocol, saddr, sport, daddr, dport);
+			session = service_alloc_session(&destination_endpoint, &source_endpoint);
 		}
 		
 		if(session) {
@@ -81,11 +86,11 @@ bool lb_process(Packet* packet) {
 		}
 
 		//Server
-		session = server_get_session(packet->ni, protocol, daddr, dport);
+		session = server_get_session(&destination_endpoint);
 		if(session) {
-			NetworkInterface* service_ni = session->service_endpoint->ni;
+			NetworkInterface* _ni = session->public_endpoint->ni;
 			session->untranslate(session, packet);
-			ni_output(service_ni, packet);
+			ni_output(_ni, packet);
 			return true;
 		}
 		return false;

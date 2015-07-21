@@ -7,6 +7,7 @@
 #include <util/types.h>
 #include <readline.h>
 
+#include "endpoint.h"
 #include "service.h"
 #include "server.h"
 #include "schedule.h"
@@ -64,42 +65,42 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t") && !service) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint service_endpoint;
+				service_endpoint.protocol = IP_PROTOCOL_TCP;
+				service_endpoint.addr = str_to_addr(argv[i]);
+				service_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
 					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					service_endpoint.ni = ni_get(ni_num);
+					if(!service_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				service = service_alloc(ni, protocol, addr, port);
+				service = service_alloc(&service_endpoint);
 				if(!service)
 					return i;
 
 				continue;
 			} else if(!strcmp(argv[i], "-u") && !service) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_UDP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint service_endpoint;
+				service_endpoint.protocol = IP_PROTOCOL_UDP;
+				service_endpoint.addr = str_to_addr(argv[i]);
+				service_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
-					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					uint8_t ni_num = parse_uint8(argv[i]);
+					service_endpoint.ni = ni_get(ni_num);
+					if(!service_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				service = service_alloc(ni, protocol, addr, port);
+				service = service_alloc(&service_endpoint);
 				if(!service)
 					return i;
 
@@ -125,18 +126,19 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				continue;
 			} else if(!strcmp(argv[i], "-out") && !!service) {
 				i++;
-				uint32_t addr = str_to_addr(argv[i]);
+				Endpoint private_endpoint;
+				private_endpoint.addr = str_to_addr(argv[i]);
+				private_endpoint.port = 0;
 				i++;
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
 					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					 private_endpoint.ni = ni_get(ni_num);
+					 if(!private_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				service_add_private_addr(service, ni, addr);
+				service_add_private_addr(service, &private_endpoint);
 				continue;
 			} else
 				return i;
@@ -158,42 +160,42 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t") && !service) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint service_endpoint;
+				service_endpoint.protocol = IP_PROTOCOL_TCP;
+				service_endpoint.addr = str_to_addr(argv[i]);
+				service_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
 					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					service_endpoint.ni = ni_get(ni_num);
+					 if(!service_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				service = service_get(ni, protocol, addr, port);
+				service = service_get(&service_endpoint);
 				if(!service)
 					return i;
 
 				continue;
 			} else if(!strcmp(argv[i], "-u") && !service) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_UDP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint service_endpoint;
+				service_endpoint.protocol = IP_PROTOCOL_UDP;
+				service_endpoint.addr = str_to_addr(argv[i]);
+				service_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
 					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					service_endpoint.ni = ni_get(ni_num);
+					 if(!service_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				service = service_get(ni, protocol, addr, port);
+				service = service_get(&service_endpoint);
 				if(!service)
 					return i;
 
@@ -235,42 +237,43 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t") && !server) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint server_endpoint;
+				server_endpoint.protocol = IP_PROTOCOL_TCP;
+				server_endpoint.addr = str_to_addr(argv[i]);
+				server_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
-					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					uint8_t ni_num = parse_uint8(argv[i]);
+					server_endpoint.ni = ni_get(ni_num);
+					if(!server_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				server = server_alloc(ni, protocol, addr, port);
+				server = server_alloc(&server_endpoint);
 				if(!server)
 					return i;
 
 				continue;
 			} else if(!strcmp(argv[i], "-u") && !server) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint server_endpoint;
+				server_endpoint.protocol = IP_PROTOCOL_UDP;
+				server_endpoint.addr = str_to_addr(argv[i]);
+				server_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
-					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					uint8_t ni_num = parse_uint8(argv[i]);
+					server_endpoint.ni = ni_get(ni_num);
+					if(!server_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				server = server_alloc(ni, protocol, addr, port);
+
+				server = server_alloc(&server_endpoint);
 				if(!server)
 					return i;
 
@@ -311,42 +314,42 @@ static int cmd_server(int argc, char** argv, void(*callback)(char* result, int e
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t") && !server) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint server_endpoint;
+				server_endpoint.protocol = IP_PROTOCOL_TCP;
+				server_endpoint.addr = str_to_addr(argv[i]);
+				server_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
-					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					uint8_t ni_num = parse_uint8(argv[i]);
+					server_endpoint.ni = ni_get(ni_num);
+					if(!server_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				server = server_alloc(ni, protocol, addr, port);
+				server = server_alloc(&server_endpoint);
 				if(!server)
 					return i;
 
 				continue;
 			} else if(!strcmp(argv[i], "-u") && !server) {
 				i++;
-				uint8_t protocol = IP_PROTOCOL_TCP;
-				uint32_t addr = str_to_addr(argv[i]);
-				uint16_t port = str_to_port(argv[i]);
+				Endpoint server_endpoint;
+				server_endpoint.protocol = IP_PROTOCOL_UDP;
+				server_endpoint.addr = str_to_addr(argv[i]);
+				server_endpoint.port = str_to_port(argv[i]);
 				i++;
 
-				NetworkInterface* ni;
 				if(is_uint8(argv[i])) {
-					 uint8_t ni_num = parse_uint8(argv[i]);
-					 ni = ni_get(ni_num);
-					 if(!ni)
+					uint8_t ni_num = parse_uint8(argv[i]);
+					server_endpoint.ni = ni_get(ni_num);
+					if(!server_endpoint.ni)
 						 return i;
 				} else
 					return i;
 
-				server = server_alloc(ni, protocol, addr, port);
+				server = server_alloc(&server_endpoint);
 				if(!server)
 					return i;
 

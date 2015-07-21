@@ -24,19 +24,19 @@ typedef struct _Server {
 	uint64_t	event_id;
 	uint8_t		mode;
 	uint8_t		weight;
-	Set*		sessions;
+	Map*		sessions;
 	
-	Session*	(*create)(Endpoint* server_endpoint, Endpoint* service_endpoint, uint32_t public_addr, uint16_t public_port, uint32_t private_addr);
-	uint8_t		priv[0];
+	Session*	(*create)(Endpoint* server_endpoint, Endpoint* service_endpoint, Endpoint* client_endpoint, Endpoint* private_endpoint);
+	void*		priv;
 } Server;
 
-Server* server_alloc(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
+Server* server_alloc(Endpoint* server_endpoint);
 bool server_free(Server* server);
 bool server_set_mode(Server* server, uint8_t mode);
 
-Server* server_get(NetworkInterface* ni, uint8_t protocol, uint32_t addr, uint16_t port);
+Server* server_get(Endpoint* server_endpoint);
 
-Session* server_get_session(NetworkInterface* ni, uint8_t protocol, uint32_t daddr, uint16_t dport);
+Session* server_get_session(Endpoint* client_endpoint);
 
 bool server_remove(Server* server, uint64_t wait);
 bool server_remove_force(Server* server);

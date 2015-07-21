@@ -11,9 +11,9 @@
 #define SESSIONS	"net.lb.sessions"
 
 typedef struct _Session {
-	Endpoint*	service_endpoint;
 	Endpoint*	server_endpoint;
-	Endpoint	public_endpoint;
+	Endpoint*	public_endpoint;
+	Endpoint	client_endpoint;
 	Endpoint	private_endpoint;
 
 	uint64_t	event_id;
