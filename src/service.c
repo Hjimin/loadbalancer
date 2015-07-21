@@ -189,6 +189,7 @@ bool service_add_private_addr(Service* service, Endpoint* _private_endpoint) {
 		}
 	}
 
+	//create active & deactive server list
 	if(!service->active_servers) {
 		service->active_servers = list_create(service->endpoint.ni->pool);
 		if(!service->active_servers)
@@ -343,7 +344,10 @@ Session* service_alloc_session(Endpoint* service_endpoint, Endpoint* client_endp
 
 	Server* server = service->next(service, client_endpoint);
 	if(!server)
-		goto error_get_server;
+		return NULL;
+
+	if(!service->private_endpoints)
+		return NULL;
 
 	Endpoint* private_endpoint = map_get(service->private_endpoints, server->endpoint.ni);
 	Session* session = server->create(&(server->endpoint), &(service->endpoint), client_endpoint, private_endpoint);

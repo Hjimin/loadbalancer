@@ -34,6 +34,8 @@ Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_end
 	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
+	session_recharge(session);
+
 	session->fin = false;
 
 	session->translate = dnat_tcp_translate;
@@ -57,12 +59,15 @@ Session* dnat_udp_session_alloc(Endpoint* server_endpoint, Endpoint* service_end
 	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
+	session_recharge(session);
+
 	session->fin = false;
 
 	session->translate = dnat_udp_translate;
 	session->untranslate = dnat_udp_untranslate;
 	session->free = dnat_free;
 
+	//set event id
 	return session;
 }
 
@@ -87,6 +92,8 @@ static bool dnat_tcp_translate(Session* session, Packet* translateet) {
 	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 	if(session->fin && tcp->ack)
 		service_free_session(session);
+	else
+		session_recharge(session);
 
 	return true;
 }
@@ -105,6 +112,8 @@ static bool dnat_udp_translate(Session* session, Packet* translateet) {
 
 	udp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
+	session_recharge(session);
+
 	return true;
 }
 
@@ -118,12 +127,13 @@ static bool dnat_tcp_untranslate(Session* session, Packet* translateet) {
 	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, public_endpoint->addr, session->client_endpoint.addr));
 	//ip->source = endian32(public_endpoint->addr);
 	//tcp->source = endian16(public_endpoint->port);
-		
-	if(tcp->fin) {
-		session_set_fin(session);
-	}
 
 	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
+		
+	if(tcp->fin)
+		session_set_fin(session);
+	else
+		session_recharge(session);
 
 	return true;
 }
@@ -140,6 +150,8 @@ static bool dnat_udp_untranslate(Session* session, Packet* translateet) {
 	//udp->source = endian16(public_endpoint->port);
 
 	udp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+
+	session_recharge(session);
 
 	return true;
 }

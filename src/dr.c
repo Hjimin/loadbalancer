@@ -30,6 +30,7 @@ Session* dr_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint,
 	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
+	session_recharge(session);
 	session->fin = false;
 
 	session->translate = dr_translate;
@@ -51,6 +52,7 @@ static bool dr_translate(Session* session, Packet* packet) {
 	Endpoint* server_endpoint = session->server_endpoint;
 	ether->smac = endian48(server_endpoint->ni->mac);
 	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->private_endpoint.addr, server_endpoint->addr));
+	session_recharge(session);
 
 	return true;
 }

@@ -55,9 +55,8 @@ static bool server_add(NetworkInterface* ni, Server* server) {
 			if(!map_contains(service->private_endpoints, ni))
 				continue;
 
-			list_remove_data(service->active_servers, server);
-			list_remove_data(service->deactive_servers, server);
-
+			//list_remove_data(service->active_servers, server);
+			//list_remove_data(service->deactive_servers, server);
 			if(server->state == SERVER_STATE_ACTIVE) {
 				list_add(service->active_servers, server);
 			} else {

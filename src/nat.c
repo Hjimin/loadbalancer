@@ -38,6 +38,7 @@ Session* nat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endp
 	session->private_endpoint.port = tcp_port_alloc(private_endpoint->ni, private_endpoint->addr);
 
 	session->event_id = 0;
+	session_recharge(session);
 	session->fin = false;
 
 	session->translate = nat_tcp_translate;
@@ -63,6 +64,7 @@ Session* nat_udp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endp
 	session->private_endpoint.port = udp_port_alloc(private_endpoint->ni, private_endpoint->addr);
 
 	session->event_id = 0;
+	session_recharge(session);
 	session->fin = false;
 
 	session->translate = nat_udp_translate;
@@ -101,9 +103,13 @@ static bool nat_tcp_translate(Session* session, Packet* packet) {
 	tcp->destination = endian16(server_endpoint->port);
 
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
-	if(session->fin && tcp->ack) {
+	session_recharge(session);
+
+	if(session->fin && tcp->ack)
 		service_free_session(session);
-	}
+	else
+		session_recharge(session);
+
 	return true;
 }
 
@@ -122,6 +128,8 @@ static bool nat_udp_translate(Session* session, Packet* packet) {
 	udp->destination = endian16(server_endpoint->port);
 
 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+
+	session_recharge(session);
 
 	return true;
 }
@@ -142,7 +150,8 @@ static bool nat_tcp_untranslate(Session* session, Packet* packet) {
 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 	if(tcp->fin) {
 		session_set_fin(session);
-	}
+	} else
+		session_recharge(session);
 	return true;
 }
 
@@ -160,6 +169,8 @@ static bool nat_udp_untranslate(Session* session, Packet* packet) {
 	udp->destination = endian16(session->client_endpoint.port);
 
 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+
+	session_recharge(session);
 
 	return true;
 }
