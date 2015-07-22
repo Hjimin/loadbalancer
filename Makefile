@@ -5,7 +5,7 @@ CFLAGS = -I ../../include -I include -O2 -g -Wall -Werror -m64 -ffreestanding -f
 DIR = obj
 
 OBJS = obj/main.o obj/loadbalancer.o obj/session.o obj/service.o obj/server.o \
-       obj/nat.o obj/dnat.o obj/dr.o obj/schedule.o obj/private.o
+       obj/nat.o obj/dnat.o obj/dr.o obj/schedule.o obj/addr_manager.o
 
 LIBS = ../../lib/libpacketngin.a
 
