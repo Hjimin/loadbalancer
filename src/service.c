@@ -35,7 +35,16 @@ Service* service_alloc(Endpoint* service_endpoint) {
 
 		uint64_t key = (uint64_t)service->endpoint.protocol << 48 | (uint64_t)service->endpoint.addr << 16 | (uint64_t)service->endpoint.port;
 
-		return map_put(services, (void*)key, service);
+		if(!map_put(services, (void*)key, service)) {
+			if(map_is_empty(services)) {
+				ni_config_remove(ni, SERVICES);
+				map_destroy(services);
+			}
+
+			return false;
+		} 
+
+		return true;
 	}
 
 	//add ip
@@ -462,19 +471,6 @@ Service* service_get(Endpoint* service_endpoint) {
 
 	return map_get(services, (void*)key);
 }
- //
- //void service_is_remove_grace(Service* service) {
- //	Map* sessions = ni_config_get(service->endpoint.ni, SESSIONS);
- //	if(!sessions)
- //		return;
- //
- //	if(map_is_empty(sessions)) { //none session
- //		if(service->event_id != 0)
- //			event_timer_remove(service->event_id);
- //
- //		service_remove_force(service);
- //	}
- //}
 
 bool service_remove(Service* service, uint64_t wait) {
 	bool service_delete_event(void* context) {

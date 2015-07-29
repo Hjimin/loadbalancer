@@ -31,7 +31,12 @@ bool session_recharge(Session* session) {
 
 		return true;
 	} else {
-		return event_timer_update(session->event_id);
+		if(!event_timer_update(session->event_id)) {
+			session->event_id = 0;
+			return false;
+		}
+			
+		return true;
 	}
 }
 

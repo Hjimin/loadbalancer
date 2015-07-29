@@ -34,7 +34,10 @@ Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_end
 	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
-	session_recharge(session);
+	if(!session_recharge(session)) {
+		dnat_free(session);
+		return NULL;
+	}
 
 	session->fin = false;
 
@@ -59,7 +62,10 @@ Session* dnat_udp_session_alloc(Endpoint* server_endpoint, Endpoint* service_end
 	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
-	session_recharge(session);
+	if(!session_recharge(session)) {
+		dnat_free(session);
+		return NULL;
+	}
 
 	session->fin = false;
 
@@ -94,7 +100,8 @@ static bool dnat_tcp_translate(Session* session, Packet* translateet) {
 		event_timer_remove(session->event_id);
 		service_free_session(session);
 	} else
-		session_recharge(session);
+		if(!session_recharge(session))
+			service_free_session(session);
 
 	return true;
 }
@@ -113,7 +120,8 @@ static bool dnat_udp_translate(Session* session, Packet* translateet) {
 
 	udp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
-	session_recharge(session);
+	if(!session_recharge(session))
+		service_free_session(session);
 
 	return true;
 }
@@ -131,10 +139,13 @@ static bool dnat_tcp_untranslate(Session* session, Packet* translateet) {
 
 	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
 		
-	if(tcp->fin)
-		session_set_fin(session);
-	else
-		session_recharge(session);
+	if(tcp->fin) {
+		if(!session_set_fin(session))
+			service_free_session(session);
+	} else {
+		if(!session_recharge(session))
+			service_free_session(session);
+	}
 
 	return true;
 }
@@ -152,7 +163,8 @@ static bool dnat_udp_untranslate(Session* session, Packet* translateet) {
 
 	udp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
-	session_recharge(session);
+	if(!session_recharge(session))
+		service_free_session(session);
 
 	return true;
 }

@@ -10,6 +10,7 @@
 #include "dr.h"
 #include "endpoint.h"
 #include "session.h"
+#include "service.h"
 
 static bool dr_translate(Session* session, Packet* packet);
 static bool dr_untranslate(Session* session, Packet* packet);
@@ -29,7 +30,10 @@ Session* dr_session_alloc(Endpoint* server_endpoint, Endpoint* service_endpoint,
 	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
-	session_recharge(session);
+	if(!session_recharge(session)) {
+		dr_free(session);
+		return NULL;
+	}
 	session->fin = false;
 
 	session->translate = dr_translate;
@@ -51,7 +55,8 @@ static bool dr_translate(Session* session, Packet* packet) {
 	Endpoint* server_endpoint = session->server_endpoint;
 	ether->smac = endian48(server_endpoint->ni->mac);
 	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->server_endpoint->addr, session->private_endpoint.addr));
-	session_recharge(session);
+	if(!session_recharge(session))
+		service_free_session(session);
 
 	return true;
 }

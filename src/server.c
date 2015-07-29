@@ -29,14 +29,16 @@ static bool server_add(NetworkInterface* ni, Server* server) {
 		servers = map_create(16, NULL, NULL, ni->pool);
 		if(!servers)
 			return false;
-		if(!ni_config_put(ni, SERVERS, servers))
+		if(!ni_config_put(ni, SERVERS, servers)) {
+			map_destroy(servers);
 			return false;
+		}
 	}
 
 	uint64_t key = (uint64_t)server->endpoint.protocol << 48 | (uint64_t)server->endpoint.addr << 16 | (uint64_t)server->endpoint.port;
 	if(!map_put(servers, (void*)key, server)) {
-		printf("Map put fail\n");
-		return false;
+		printf("Server map put fail\n");
+		goto map_put_error;
 	}
 
 	//Add to service active & deactive server list
@@ -100,6 +102,12 @@ list_add_error:
 			else if(!list_remove_data(service->deactive_servers, server))
 				continue;
 		}
+	}
+
+map_put_error:
+	if(map_is_empty(servers)) {
+		ni_config_remove(ni, SERVERS);
+		map_destroy(servers);
 	}
 
 	return false;
@@ -225,26 +233,6 @@ Session* server_get_session(Endpoint* client_endpoint) {
 	return session;
 }
 
-void server_is_remove_grace(Server* server) {
-	if(server->state == SERVER_STATE_ACTIVE)
-		return;
-
-	Map* sessions = ni_config_get(server->endpoint.ni, SESSIONS);
-	if(sessions && map_is_empty(sessions)) { //none session //		
-		if(server->event_id != 0) {
-			event_timer_remove(server->event_id);
-			server->event_id = 0;
-		}
-
-		//remove from ni
-		Map* servers = ni_config_get(server->endpoint.ni, SERVERS);
-		uint64_t key = (uint64_t)server->endpoint.protocol << 48 | (uint64_t)server->endpoint.addr << 16 | (uint64_t)server->endpoint.port;
-		map_remove(servers, (void*)key);
-
-		server_free(server);
-	}
-}
-
 bool server_remove(Server* server, uint64_t wait) {
 	bool server_delete_event(void* context) {
 		Server* server = context;
@@ -324,6 +312,11 @@ bool server_remove_force(Server* server) {
 	map_remove(servers, (void*)key);
 
 	server_free(server);
+
+	if(map_is_empty(servers)) {
+		ni_config_remove(server->endpoint.ni, SERVERS);
+		map_destroy(servers);
+	}
 
 	return true;
 }

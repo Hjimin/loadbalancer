@@ -29,9 +29,8 @@ bool addr_alloc(NetworkInterface* ni, uint32_t addr) {
 	}
 
 	count++;
-	map_update(addrs, (void*)(uintptr_t)addr, (void*)(uintptr_t)count);
 
-	return true;
+	return map_update(addrs, (void*)(uintptr_t)addr, (void*)(uintptr_t)count);
 }
 
 bool addr_free(NetworkInterface* ni, uint32_t addr) {
@@ -50,7 +49,7 @@ bool addr_free(NetworkInterface* ni, uint32_t addr) {
 			ni_config_remove(ni, ADDRS);
 		}
 	} else
-		map_update(addrs, (void*)(uintptr_t)addr, (void*)(uintptr_t)count);
+		return map_update(addrs, (void*)(uintptr_t)addr, (void*)(uintptr_t)count);
 
 	return true;
 }
