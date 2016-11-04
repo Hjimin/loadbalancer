@@ -572,10 +572,10 @@ void service_dump() {
 	void print_schedule(uint8_t schedule) {
 		switch(schedule) {
 			case SCHEDULE_ROUND_ROBIN:
-				printf("Round-Robin\t");
+				printf("Round-Robin\t\t");
 				break;
 			case SCHEDULE_RANDOM:
-				printf("Random\t\t");
+				printf("Random\t\t\t");
 				break;
 			case SCHEDULE_LEAST:
 				printf("Least Connection\t");
@@ -584,7 +584,7 @@ void service_dump() {
 				printf("Source Hashing\t\t");
 				break;
 			case SCHEDULE_DESTINATION_IP_HASH:
-				printf("Destination Hashing\t\t");
+				printf("Destination Hashing\t");
 				break;
 			case SCHEDULE_WEIGHTED_ROUND_ROBIN:
 				printf("W Round-Robin\t");
@@ -612,7 +612,7 @@ void service_dump() {
 	}
 
 
-	printf("State\t\tProtocol\tAddr:Port\t\tSchedule\tNIC\tSession\tServer\n");
+	printf("State\t\tProtocol\tAddr:Port\t\tSchedule\t\tNIC\tSession\tServer\n");
 	int count = nic_count();
 	for(int i = 0; i < count; i++) {
 		NIC* ni = nic_get(i);

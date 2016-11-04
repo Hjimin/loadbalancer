@@ -9,6 +9,7 @@
 #include <net/arp.h>
 #include <net/tcp.h>
 #include <net/udp.h>
+#include <net/dhcp.h>
 
 #include "loadbalancer.h"
 #include "service.h"
@@ -38,7 +39,6 @@ bool lb_process(Packet* packet) {
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
-		
 		Endpoint destination_endpoint;
 		Endpoint source_endpoint;
 
@@ -60,6 +60,11 @@ bool lb_process(Packet* packet) {
 			case IP_PROTOCOL_UDP:
 				;
 				UDP* udp = (UDP*)ip->body;
+				if(udp->source == endian16(DHCP_SERVER_PORT)) {
+					dhcp_process(packet);
+					return true;
+				}
+
 				source_endpoint.port = endian16(udp->source);
 				destination_endpoint.port = endian16(udp->destination);
 				break;

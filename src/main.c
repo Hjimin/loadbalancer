@@ -6,6 +6,7 @@
 #include <util/cmd.h>
 #include <util/types.h>
 #include <util/event.h>
+#include <net/dhcp.h>
 #include <readline.h>
 
 #include "endpoint.h"
@@ -15,6 +16,13 @@
 #include "loadbalancer.h"
 
 static bool is_continue;
+
+typedef struct {
+	Endpoint service_endpoint;
+	Endpoint private_endpoint;
+	Service* service;
+	uint32_t schedule;
+} DHCPCallbackData;
 
 static uint32_t str_to_addr(char* argv) {
 	char* str = argv;
@@ -88,20 +96,87 @@ static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exi
 	return 0;
 }
 
+bool private_ip_offered(NIC* nic, uint32_t transaction_id, uint32_t ip, void* data) {
+	printf("private ip offered. \n");
+	return true;
+}
+
+bool private_ip_acked(NIC* nic, uint32_t transaction_id, uint32_t ip, void* _data) {
+	printf("private ip leased. \n");
+	DHCPCallbackData* data = (DHCPCallbackData*)_data;
+
+	Endpoint private_endpoint = data->private_endpoint;
+	private_endpoint.addr = ip; 
+
+	Service* service = data->service;
+	uint32_t schedule = data->schedule;
+	service_set_schedule(service, schedule);
+	service_add_private_addr(service, &private_endpoint);
+
+	if(!service)
+		return false;
+
+	return true;
+}
+bool service_ip_offered(NIC* nic, uint32_t transaction_id, uint32_t ip, void* data) {
+	printf("service ip offered. \n");
+	return true;
+}
+
+bool service_ip_acked(NIC* nic, uint32_t transaction_id, uint32_t ip, void* _data) {
+	printf("service ip leased. \n");
+	DHCPCallbackData* data = (DHCPCallbackData*)_data;
+
+	Endpoint service_endpoint = data->service_endpoint;
+	service_endpoint.addr = ip; 
+	Service* service = data->service;
+	service = service_alloc(&service_endpoint);
+	if(!service)
+		return false;
+
+	data->service = service;
+	if(data->private_endpoint.addr == 0) {
+		Endpoint private_endpoint = data->private_endpoint;
+		dhcp_lease_ip(private_endpoint.ni, private_ip_offered, private_ip_acked, data); 
+	}
+
+	return true;
+}
+
+
 static int cmd_service(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
+
+	if(strcmp(argv[1], "list") != 0 && argc != 10) {
+		printf("not enough argument for service command \n"); 
+		return -1;
+	}
+
 	if(!strcmp(argv[1], "add")) {
 		int i = 2;
 		Service* service = NULL;
 
+		Endpoint service_endpoint;
+		Endpoint private_endpoint;
+		uint8_t schedule = 0;
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t") && !service) {
 				i++;
-				Endpoint service_endpoint;
 				service_endpoint.protocol = IP_PROTOCOL_TCP;
-				service_endpoint.addr = str_to_addr(argv[i]);
-				service_endpoint.port = str_to_port(argv[i]);
-				i++;
+				if(!strncmp(argv[i], "dhcp", 4)) {
+					service_endpoint.addr = 0;
+					char* port = strchr(argv[i], ':');
+					char* left;
+					++port;
+					strtol(port, &left, 0);
+					service_endpoint.port = atoi(port); 
+				} else {
+					service_endpoint.addr = str_to_addr(argv[i]);
+					service_endpoint.port = str_to_port(argv[i]);
+				}
 
+				printf("here check ip %p \n", service_endpoint.addr);
+
+				i++;
 				if(is_uint8(argv[i])) {
 					uint8_t ni_num = parse_uint8(argv[i]);
 					service_endpoint.ni = nic_get(ni_num);
@@ -113,20 +188,24 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					printf("Netowrk Interface number wrong\n");
 					return i;
 				}
-
-				service = service_alloc(&service_endpoint);
-				if(!service)
-					return i;
 
 				continue;
 			} else if(!strcmp(argv[i], "-u") && !service) {
 				i++;
-				Endpoint service_endpoint;
 				service_endpoint.protocol = IP_PROTOCOL_UDP;
-				service_endpoint.addr = str_to_addr(argv[i]);
-				service_endpoint.port = str_to_port(argv[i]);
-				i++;
+				if(!strncmp(argv[i], "dhcp", 4)) {
+					service_endpoint.addr = 0;
+					char* port = strchr(argv[i], ':');
+					char* left;
+					++port;
+					strtol(port, &left, 0);
+					service_endpoint.port = atoi(port); 
+				} else {
+					service_endpoint.addr = str_to_addr(argv[i]);
+					service_endpoint.port = str_to_port(argv[i]);
+				}
 
+				i++;
 				if(is_uint8(argv[i])) {
 					uint8_t ni_num = parse_uint8(argv[i]);
 					service_endpoint.ni = nic_get(ni_num);
@@ -139,15 +218,10 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					return i;
 				}
 
-				service = service_alloc(&service_endpoint);
-				if(!service)
-					return i;
-
 				continue;
-			} else if(!strcmp(argv[i], "-s") && !!service) {
+			} else if(!strcmp(argv[i], "-s") ){//&& !!service) {
 				i++;
 
-				uint8_t schedule;
 				if(!strcmp(argv[i], "rr"))
 					schedule = SCHEDULE_ROUND_ROBIN;
 				else if(!strcmp(argv[i], "r"))
@@ -163,12 +237,15 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				else
 					return i;
 
-				service_set_schedule(service, schedule);
 				continue;
-			} else if(!strcmp(argv[i], "-out") && !!service) {
+			} else if(!strcmp(argv[i], "-out")) { // && !!service) {
 				i++;
-				Endpoint private_endpoint;
-				private_endpoint.addr = str_to_addr(argv[i]);
+
+				if(!strncmp(argv[i], "dhcp", 4)) {
+					private_endpoint.addr = 0;
+				} else {
+					private_endpoint.addr = str_to_addr(argv[i]);
+				}
 				private_endpoint.port = 0;
 				i++;
 				if(is_uint8(argv[i])) {
@@ -183,20 +260,56 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					return i;
 				}
 
-				service_add_private_addr(service, &private_endpoint);
 				continue;
 			} else { 
 				printf("Wrong arguments\n");
 				return i;
 			}
 		}
-			
-		if(service == NULL) {
-			printf("Can'nt create service\n");
-			return -1;
+
+
+		//TODO: when addr is empty
+		if(service_endpoint.addr != 0 && schedule != 0 ) {
+			service = service_alloc(&service_endpoint);
+			if(!service)
+				return -1;
+			if(private_endpoint.addr != 0 ) {
+				service_set_schedule(service, schedule);
+				service_add_private_addr(service, &private_endpoint);
+			} else if (private_endpoint.addr == 0) {
+				DHCPCallbackData* data = malloc(sizeof(DHCPCallbackData));
+				data->service_endpoint = service_endpoint;
+				data->service = service;
+				data->private_endpoint = private_endpoint;
+				data->schedule = schedule;
+				dhcp_lease_ip(private_endpoint.ni, private_ip_offered, private_ip_acked, data); 
+			}
+
+		} else if (service_endpoint.addr == 0 && schedule != 0 ) {
+			DHCPCallbackData* data = malloc(sizeof(DHCPCallbackData));
+			data->service_endpoint = service_endpoint;
+			data->service = service;
+			data->schedule = schedule;
+			//TODO: why do they not need private ip 
+			if(private_endpoint.addr != 0 ) {
+				service_set_schedule(service, schedule);
+				service_add_private_addr(service, &private_endpoint);
+			} else if (private_endpoint.addr == 0) {
+				data->private_endpoint = private_endpoint;
+			}
+
+			dhcp_lease_ip(service_endpoint.ni, service_ip_offered, service_ip_acked, data); 
 		}
 
+		
+			
+//		if(service == NULL) {
+//			printf("Can'nt create service\n");
+//			return -1;
+//		}
+
 		return 0;
+
 	} else if(!strcmp(argv[1], "delete")) {
 		int i = 2;
 		bool is_force = false;
@@ -287,6 +400,9 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		else
 			service_remove_force(service);
 
+
+
+
 		return 0;
 	} else if(!strcmp(argv[1], "list")) {
 		printf("Loadbalancer Service List\n");
@@ -297,6 +413,8 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		printf("Unknown Command\n");
 		return -1;
 	}
+
+
 
 	return 0;
 }
@@ -543,9 +661,17 @@ Command commands[] = {
 };
 
 int ginit(int argc, char** argv) {
+	uint32_t i;
+	uint32_t count = nic_count();
+
 	if(lb_ginit() < 0)
 		return -1;
 
+  	for(i=0; count > i; i++) {
+		NIC* nic = nic_get(i);
+                dhcp_init(nic);
+                printf("dhcp_init\n");
+        }
 	return 0;
 }
 
