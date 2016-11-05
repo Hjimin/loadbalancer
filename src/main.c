@@ -95,7 +95,7 @@ static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exi
 }
 
 bool private_ip_offered(NIC* nic, uint32_t transaction_id, uint32_t ip, void* data) {
-	printf("private ip offered. \n");
+	printf(" private ip offered. \n");
 	return true;
 }
 
