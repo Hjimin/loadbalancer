@@ -9,6 +9,15 @@
 int lb_ginit();
 int lb_init();
 void lb_loop();
-bool lb_process(Packet* packet);
+bool lb_process(Packet* packet, int ni_num);
+Map* lb_get_services(int ni_num);
+Map* lb_get_servers(int ni_num); 
+Map* lb_get_sessions(int ni_num); 
+
+typedef struct _LoadBalancer {
+	Map* services;
+	Map* servers;
+	Map* sessions;
+} LoadBalancer;
 
 #endif /* __LOADBALANCER_H__ */

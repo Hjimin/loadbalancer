@@ -16,13 +16,39 @@
 #include "session.h"
 
 extern void* __gmalloc_pool;
+static LoadBalancer** loadbalancers;
+
 int lb_ginit() {
 	uint32_t count = ni_count();
 	if(count < 2)
 		return -1;
 
+	loadbalancers = (LoadBalancer**)__malloc(sizeof(LoadBalancer*) * count, __gmalloc_pool);
+
+	for(int i = 0; i < count; i++) {
+		NIC* nic = nic_get(i);
+		loadbalancers[i] = (LoadBalancer*)__malloc(sizeof(LoadBalancer), nic->pool);
+		loadbalancers[i]->services = map_create(16, NULL, NULL, nic->pool);
+		loadbalancers[i]->servers = map_create(16, NULL, NULL, nic->pool);
+		loadbalancers[i]->sessions = map_create(1024, NULL, NULL, nic->pool);
+	}   
+
+
 	return 0;
 }
+
+Map* lb_get_services(int ni_num) {
+	    return loadbalancers[ni_num]->services;
+}
+
+Map* lb_get_servers(int ni_num) {
+	    return loadbalancers[ni_num]->servers;
+}
+
+Map* lb_get_sessions(int ni_num) {
+	    return loadbalancers[ni_num]->sessions;
+}
+
 
 int lb_init() {
 	event_init();
@@ -33,22 +59,24 @@ void lb_loop() {
 	event_loop();
 }
 
-bool lb_process(Packet* packet) {
+bool lb_process(Packet* packet, int ni_num) {
 	if(arp_process(packet))
 		return true;
-	
+
 	if(icmp_process(packet))
 		return true;
-	
+
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	if(endian16(ether->type) == ETHER_TYPE_IPv4) {
 		IP* ip = (IP*)ether->payload;
-		
+
 		Endpoint destination_endpoint;
 		Endpoint source_endpoint;
 
 		destination_endpoint.ni = packet->ni;
+		destination_endpoint.ni_num = ni_num;
 		source_endpoint.ni = packet->ni;
+		source_endpoint.ni_num = ni_num;
 
 		source_endpoint.addr = endian32(ip->source);
 		destination_endpoint.addr = endian32(ip->destination);
@@ -77,7 +105,7 @@ bool lb_process(Packet* packet) {
 		if(!session) {
 			session = service_alloc_session(&destination_endpoint, &source_endpoint);
 		}
-		
+
 		if(session) {
 			NetworkInterface* server_ni = session->server_endpoint->ni;
 			session->translate(session, packet);

@@ -8,6 +8,7 @@ typedef struct _Endpoint {
 	uint32_t		addr;
 	uint8_t			protocol;
 	uint16_t		port;
+	int				ni_num;
 } Endpoint;
 
 Endpoint* endpoint_alloc(NetworkInterface* ni, uint32_t addr, uint8_t protocol, uint16_t port);
