@@ -45,7 +45,7 @@ bool service_remove_private_addr(Service* service, NIC* ni);
 bool service_free(Service* service);
 
 Service* service_get(Endpoint* service_endpoint);
-bool service_empty(NIC* ni);
+bool service_empty(int ni_num);
 
 Session* service_alloc_session(Endpoint* service_endpoint, Endpoint* client_endpoint);
 Session* service_get_session(Endpoint* client_endpoint);

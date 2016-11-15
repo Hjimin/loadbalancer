@@ -13,7 +13,7 @@
 #include "service.h"
 
 bool session_recharge(Session* session) {
-	bool session_free_event(void* context) {
+/*	bool session_free_event(void* context) {
 		Session* session = context;
 		service_free_session(session);
 
@@ -37,11 +37,12 @@ bool session_recharge(Session* session) {
 		}
 			
 		return true;
-	}
+	}*/
+	return true;       //for test after test -> delete
 }
 
 bool session_set_fin(Session* session) {
-	bool gc(void* context) {
+/*	bool gc(void* context) {
 		Session* session = context;
 		service_free_session(session);
 		
@@ -60,7 +61,7 @@ bool session_set_fin(Session* session) {
 		printf("Can'nt add service event\n");
 		return false;
 	}
-	
+*/	
 	return true;
 }
 

@@ -105,7 +105,7 @@ static bool nat_tcp_translate(Session* session, Packet* packet) {
 	Endpoint* private_endpoint = &(session->private_endpoint);
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	IP* ip = (IP*)ether->payload;
-	TCP* tcp = (TCP*)ip->body;
+	TCP* tcp = (TCP*)((uint8_t*)ip + ip->ihl * 4);
 
 	ether->smac = endian48(session->server_endpoint->ni->mac);
 	ether->dmac = endian48(arp_get_mac(session->server_endpoint->ni, server_endpoint->addr, private_endpoint->addr));
@@ -114,7 +114,7 @@ static bool nat_tcp_translate(Session* session, Packet* packet) {
 	tcp->source = endian16(private_endpoint->port);
 	tcp->destination = endian16(server_endpoint->port);
 
-	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
+	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
 
 	if(session->fin && tcp->ack) {
 		event_timer_remove(session->event_id);
@@ -153,7 +153,7 @@ static bool nat_tcp_untranslate(Session* session, Packet* packet) {
 	Endpoint* public_endpoint = session->public_endpoint;
 	Ether* ether = (Ether*)(packet->buffer + packet->start);
 	IP* ip = (IP*)ether->payload;
-	TCP* tcp = (TCP*)ip->body;
+	TCP* tcp = (TCP*)((uint8_t*)ip + ip->ihl * 4);
 
 	ether->smac = endian48(session->public_endpoint->ni->mac);
 	ether->dmac = endian48(arp_get_mac(session->public_endpoint->ni, session->client_endpoint.addr, session->public_endpoint->addr));
@@ -162,7 +162,7 @@ static bool nat_tcp_untranslate(Session* session, Packet* packet) {
 	tcp->source = endian16(public_endpoint->port);
 	tcp->destination = endian16(session->client_endpoint.port);
 
-	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
+	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
 
 	if(tcp->fin) {
 		if(!session_set_fin(session)) {

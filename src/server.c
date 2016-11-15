@@ -20,21 +20,25 @@
 #include "nat.h"
 #include "dnat.h"
 #include "dr.h"
+#include "loadbalancer.h"
 
 extern void* __gmalloc_pool;
 
-static bool server_add(NIC* ni, Server* server) {
-	Map* servers = nic_config_get(ni, SERVERS);
+//static bool server_add(NIC* ni, Server* server) {
+static bool server_add(int ni_num, Server* server) {
+//	Map* servers = nic_config_get(ni, SERVERS);
+	Map* servers = lb_get_servers(ni_num);
+/*
 	if(!servers) {
-		servers = map_create(16, NULL, NULL, ni->pool);
+		servers = map_create(16, NULL, NULL, nic_get(ni_num)->pool);
 		if(!servers)
 			return false;
-		if(!nic_config_put(ni, SERVERS, servers)) {
+		if(!nic_config_put(nic_get(ni_num), SERVERS, servers)) {
 			map_destroy(servers);
 			return false;
 		}
 	}
-
+*/
 	uint64_t key = (uint64_t)server->endpoint.protocol << 48 | (uint64_t)server->endpoint.addr << 16 | (uint64_t)server->endpoint.port;
 	if(!map_put(servers, (void*)key, server)) {
 		printf("Server map put fail\n");
@@ -44,8 +48,9 @@ static bool server_add(NIC* ni, Server* server) {
 	//Add to service active & deactive server list
 	uint32_t count = nic_count();
 	for(int i = 0; i < count; i++) {
-		NIC* service_ni = nic_get(i);
-		Map* services = nic_config_get(service_ni, SERVICES);
+//		NIC* service_ni = nic_get(i);
+//		Map* services = nic_config_get(service_ni, SERVICES);
+		Map* services = lb_get_services(i);
 		if(!services)
 			continue;
 
@@ -58,7 +63,7 @@ static bool server_add(NIC* ni, Server* server) {
 			if(!service->private_endpoints)
 				continue;
 
-			if(!map_contains(service->private_endpoints, ni))
+			if(!map_contains(service->private_endpoints, nic_get(ni_num)))
 				continue;
 
 			if(server->state == SERVER_STATE_ACTIVE) {
@@ -80,8 +85,9 @@ static bool server_add(NIC* ni, Server* server) {
 list_add_error:
 	//remove to service's server list
 	for(int i = 0; i < count; i++) {
-		NIC* service_ni = nic_get(i);
-		Map* services = nic_config_get(service_ni, SERVICES);
+//		NIC* service_ni = nic_get(i);
+//		Map* services = nic_config_get(service_ni, SERVICES);
+		Map* services = lb_get_services(i);
 		if(!services)
 			continue;
 
@@ -94,7 +100,7 @@ list_add_error:
 			if(!service->private_endpoints)
 				continue;
 
-			if(!map_contains(service->private_endpoints, ni))
+			if(!map_contains(service->private_endpoints, nic_get(ni_num)))
 				continue;
 
 			if(!list_remove_data(service->active_servers, server))
@@ -106,7 +112,7 @@ list_add_error:
 
 map_put_error:
 	if(map_is_empty(servers)) {
-		nic_config_remove(ni, SERVERS);
+		nic_config_remove(nic_get(ni_num), SERVERS);
 		map_destroy(servers);
 	}
 
@@ -129,7 +135,7 @@ Server* server_alloc(Endpoint* server_endpoint) {
 	server_set_mode(server, MODE_NAT);
 	server_set_weight(server, 1);
 
-	if(!server_add(server->endpoint.ni, server))
+	if(!server_add(server->endpoint.ni_num, server))
 		goto server_add_fail;
 
 	return server;
@@ -183,9 +189,9 @@ bool server_set_weight(Server* server, uint8_t weight) {
 bool server_free(Server* server) {
 	uint32_t count = nic_count();
 	for(int i = 0; i < count; i++) {
-		NIC* service_ni = nic_get(i);
-		Map* services = nic_config_get(service_ni, SERVICES);
-
+//		NIC* service_ni = nic_get(i);
+//		Map* services = nic_config_get(service_ni, SERVICES);
+		Map* services = lb_get_services(i);
 		if(!services)
 			continue;
 
@@ -213,7 +219,8 @@ bool server_free(Server* server) {
 }
 
 Server* server_get(Endpoint* server_endpoint) {
-	Map* servers = nic_config_get(server_endpoint->ni, SERVERS);
+//	Map* servers = nic_config_get(server_endpoint->ni, SERVERS);
+	Map* servers = lb_get_servers(server_endpoint->ni_num);
 	if(!servers)
 		return NULL;
 
@@ -222,7 +229,8 @@ Server* server_get(Endpoint* server_endpoint) {
 }
 
 Session* server_get_session(Endpoint* client_endpoint) {
-	Map* sessions = nic_config_get(client_endpoint->ni, SESSIONS);
+//	Map* sessions = nic_config_get(client_endpoint->ni, SESSIONS);
+	Map* sessions = lb_get_sessions(client_endpoint->ni_num);
 	if(!sessions)
 		return NULL;
 
@@ -259,8 +267,9 @@ bool server_remove(Server* server, uint64_t wait) {
 
 		uint32_t count = nic_count();
 		for(int i = 0; i < count; i++) {
-			NIC* service_ni = nic_get(i);
-			Map* services = nic_config_get(service_ni, SERVICES);
+//			NIC* service_ni = nic_get(i);
+//			Map* services = nic_config_get(service_ni, SERVICES);
+			Map* services = lb_get_services(i);
 			if(!services)
 				continue;
 
@@ -289,7 +298,9 @@ bool server_remove_force(Server* server) {
 		server->event_id = 0;
 	}
 
-	Map* sessions = nic_config_get(server->endpoint.ni, SESSIONS);
+//	Map* sessions = nic_config_get(server->endpoint.ni, SESSIONS);
+	Map* sessions = lb_get_sessions(server->endpoint.ni_num);
+
 	if(sessions && !map_is_empty(sessions)) {
 		MapIterator iter;
 		map_iterator_init(&iter, sessions);
@@ -304,7 +315,8 @@ bool server_remove_force(Server* server) {
 
 	server->state = SERVER_STATE_DEACTIVE;
 	//delet from ni
-	Map* servers = nic_config_get(server->endpoint.ni, SERVERS);
+//	Map* servers = nic_config_get(server->endpoint.ni, SERVERS);
+	Map* servers = lb_get_servers(server->endpoint.ni_num);
 	uint64_t key = (uint64_t)server->endpoint.protocol << 48 | (uint64_t)server->endpoint.addr << 16 | (uint64_t)server->endpoint.port;
 	map_remove(servers, (void*)key);
 
@@ -361,7 +373,8 @@ void server_dump() {
 	printf("State\t\tAddr:Port\t\tMode\tNIC\tWeight\tSessions\n");
 	uint8_t count = nic_count();
 	for(int i = 0; i < count; i++) {
-		Map* servers = nic_config_get(nic_get(i), SERVERS);
+//		Map* servers = nic_config_get(nic_get(i), SERVERS);
+		Map* servers = lb_get_servers(i);			
 		if(!servers)
 			continue;
 
