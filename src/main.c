@@ -6,6 +6,7 @@
 #include <util/cmd.h>
 #include <util/types.h>
 #include <util/event.h>
+#include <net/dhcp.h>
 #include <readline.h>
 
 #include "endpoint.h"
@@ -15,6 +16,11 @@
 #include "loadbalancer.h"
 
 static bool is_continue;
+
+typedef struct {
+	Endpoint private_endpoint;
+	Service* service;
+} DHCPCallbackData;
 
 static uint32_t str_to_addr(char* argv) {
 	char* str = argv;
@@ -88,10 +94,40 @@ static int cmd_exit(int argc, char** argv, void(*callback)(char* result, int exi
 	return 0;
 }
 
+bool private_ip_offered(NIC* nic, uint32_t transaction_id, uint32_t ip, void* data) {
+	printf(" private ip offered. \n");
+	return true;
+}
+
+bool private_ip_acked(NIC* nic, uint32_t transaction_id, uint32_t ip, void* _data) {
+	printf("private ip leased. \n");
+	DHCPCallbackData* data = (DHCPCallbackData*)_data;
+
+	Endpoint private_endpoint = data->private_endpoint;
+	private_endpoint.addr = ip; 
+
+	Service* service = data->service;
+	service_add_private_addr(service, &private_endpoint);
+
+	if(!service)
+		return false;
+
+	return true;
+}
+
 static int cmd_service(int argc, char** argv, void(*callback)(char* result, int exit_status)) {
+
+	if(strcmp(argv[1], "list") != 0 && argc != 10) {
+		printf("not enough argument for service command \n"); 
+		return -1;
+	}
+
 	if(!strcmp(argv[1], "add")) {
 		int i = 2;
 		Service* service = NULL;
+
+	//	Endpoint service_endpoint;
+//		Endpoint private_endpoint;
 
 		for(;i < argc; i++) {
 			if(!strcmp(argv[i], "-t") && !service) {
@@ -169,9 +205,15 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				continue;
 			} else if(!strcmp(argv[i], "-out") && !!service) {
 				i++;
+
 				Endpoint private_endpoint;
-				private_endpoint.addr = str_to_addr(argv[i]);
-				private_endpoint.port = 0;
+				if(!strncmp(argv[i], "dhcp", 4)) {
+					private_endpoint.addr = 0;
+					private_endpoint.port = 0;
+				} else {
+					private_endpoint.addr = str_to_addr(argv[i]);
+					private_endpoint.port = 0;
+				}
 				i++;
 				if(is_uint8(argv[i])) {
 					uint8_t ni_num = parse_uint8(argv[i]);
@@ -186,20 +228,32 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 					return i;
 				}
 
-				service_add_private_addr(service, &private_endpoint);
+				//service_add_private_addr(service, &private_endpoint);
+				if(private_endpoint.addr != 0 ) {
+					service_add_private_addr(service, &private_endpoint);
+					printf("000000000000 \n\n");
+				} else if (private_endpoint.addr == 0) {
+					DHCPCallbackData* data = malloc(sizeof(DHCPCallbackData));
+					data->service = service;
+					data->private_endpoint = private_endpoint;
+					dhcp_lease_ip(private_endpoint.ni, private_ip_offered, private_ip_acked, data); 
+				}
+
 				continue;
 			} else { 
 				printf("Wrong arguments\n");
 				return i;
 			}
 		}
-			
-		if(service == NULL) {
-			printf("Can'nt create service\n");
-			return -1;
-		}
+
+
+//		if(service == NULL) {
+//			printf("Can'nt create service\n");
+//			return -1;
+//		}
 
 		return 0;
+
 	} else if(!strcmp(argv[1], "delete")) {
 		int i = 2;
 		bool is_force = false;
@@ -292,6 +346,9 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		else
 			service_remove_force(service);
 
+
+
+
 		return 0;
 	} else if(!strcmp(argv[1], "list")) {
 		printf("Loadbalancer Service List\n");
@@ -302,6 +359,8 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 		printf("Unknown Command\n");
 		return -1;
 	}
+
+
 
 	return 0;
 }
@@ -549,9 +608,17 @@ Command commands[] = {
 };
 
 int ginit(int argc, char** argv) {
+	uint32_t i;
+	uint32_t count = nic_count();
+
 	if(lb_ginit() < 0)
 		return -1;
 
+  	for(i=0; count > i; i++) {
+		NIC* nic = nic_get(i);
+                dhcp_init(nic);
+                printf("dhcp_init\n");
+        }
 	return 0;
 }
 

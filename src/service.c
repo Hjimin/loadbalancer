@@ -592,10 +592,10 @@ void service_dump() {
 	void print_schedule(uint8_t schedule) {
 		switch(schedule) {
 			case SCHEDULE_ROUND_ROBIN:
-				printf("Round-Robin\t");
+				printf("Round-Robin\t\t");
 				break;
 			case SCHEDULE_RANDOM:
-				printf("Random\t\t");
+				printf("Random\t\t\t");
 				break;
 			case SCHEDULE_LEAST:
 				printf("Least Connection\t");
@@ -604,7 +604,7 @@ void service_dump() {
 				printf("Source Hashing\t\t");
 				break;
 			case SCHEDULE_DESTINATION_IP_HASH:
-				printf("Destination Hashing\t\t");
+				printf("Destination Hashing\t");
 				break;
 			case SCHEDULE_WEIGHTED_ROUND_ROBIN:
 				printf("W Round-Robin\t");
@@ -617,6 +617,10 @@ void service_dump() {
 			if(ni == nic_get(i))
 				printf("%d\t", i);
 		}
+	}
+	void print_private_addr_port(uint32_t addr) {
+		printf("%d.%d.%d.%d\t\t", (addr >> 24) & 0xff, (addr >> 16) & 0xff,
+				(addr >> 8) & 0xff, addr & 0xff);
 	}
 	void print_session_count(Map* sessions) {
 		if(sessions)
@@ -632,7 +636,7 @@ void service_dump() {
 	}
 
 
-	printf("State\t\tProtocol\tAddr:Port\t\tSchedule\tNIC\tSession\tServer\n");
+	printf("State\t\tProtocol\tAddr:Port\t\tPrivate_Addr:Port\tSchedule\t\tNIC\tSession\tServer\n");
 	int count = nic_count();
 	for(int i = 0; i < count; i++) {
 //		NIC* ni = nic_get(i);
@@ -649,9 +653,24 @@ void service_dump() {
 			MapEntry* entry = map_iterator_next(&iter);
 			Service* service = entry->data;
 
+
 			print_state(service->state);
 			print_protocol(service->endpoint.protocol);
 			print_addr_port(service->endpoint.addr, service->endpoint.port);
+
+			MapIterator pr_iter;
+			Map* private_endpoints = service->private_endpoints;
+			if(!private_endpoints) {
+				print_private_addr_port(0);
+			} else { 
+				map_iterator_init(&pr_iter, private_endpoints);
+				while(map_iterator_has_next(&pr_iter)) {
+					MapEntry* entry = map_iterator_next(&pr_iter);
+					Endpoint* pr_end = entry->data;
+					print_private_addr_port(pr_end->addr);
+				}
+
+			}
 			print_schedule(service->schedule);
 			print_nic_num(service->endpoint.ni);
 			//Map* sessions = ni_config_get(service->endpoint.ni, SESSIONS);
