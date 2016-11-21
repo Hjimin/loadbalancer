@@ -31,7 +31,7 @@ Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_end
 	session->server_endpoint = server_endpoint;
 
 	memcpy(&session->client_endpoint, client_endpoint, sizeof(Endpoint));
-	memcpy(&session->private_endpoint, client_endpoint, sizeof(Endpoint));
+	memcpy(&session->private_endpoint, private_endpoint, sizeof(Endpoint));
 
 	session->event_id = 0;
 	if(!session_recharge(session)) {
@@ -44,6 +44,7 @@ Session* dnat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_end
 	session->translate = dnat_tcp_translate;
 	session->untranslate = dnat_tcp_untranslate;
 	session->free = dnat_free;
+	session->mode = DNAT;
 
 	return session;
 }
@@ -86,15 +87,15 @@ static bool dnat_tcp_translate(Session* session, Packet* translateet) {
 	Endpoint* server_endpoint = session->server_endpoint;
 	Ether* ether = (Ether*)(translateet->buffer + translateet->start);
 	IP* ip = (IP*)ether->payload;
-	TCP* tcp = (TCP*)ip->body;
+	TCP* tcp = (TCP*)((uint8_t*)ip + ip->ihl * 4);
 
 	ether->smac = endian48(server_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->private_endpoint.addr, server_endpoint->addr));
+	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, server_endpoint->addr, session->private_endpoint.addr));
 
 	ip->destination = endian32(server_endpoint->addr);
 	tcp->destination = endian16(server_endpoint->port);
 
-	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
+	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
 
 	if(session->fin && tcp->ack) {
 		event_timer_remove(session->event_id);
@@ -130,15 +131,14 @@ static bool dnat_tcp_untranslate(Session* session, Packet* translateet) {
 	Endpoint* public_endpoint = session->public_endpoint;
 	Ether* ether = (Ether*)(translateet->buffer + translateet->start);
 	IP* ip = (IP*)ether->payload;
-	TCP* tcp = (TCP*)ip->body;
+	TCP* tcp = (TCP*)((uint8_t*)ip + ip->ihl * 4);
 
 	ether->smac = endian48(public_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, public_endpoint->addr, session->client_endpoint.addr));
+	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, session->client_endpoint.addr, public_endpoint->addr));
 	ip->source = endian32(public_endpoint->addr);
 	tcp->source = endian16(public_endpoint->port);
 
-	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - TCP_LEN);
-		
+	tcp_pack(translateet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
 	if(tcp->fin) {
 		if(!session_set_fin(session))
 			service_free_session(session);

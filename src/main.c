@@ -231,7 +231,6 @@ static int cmd_service(int argc, char** argv, void(*callback)(char* result, int 
 				//service_add_private_addr(service, &private_endpoint);
 				if(private_endpoint.addr != 0 ) {
 					service_add_private_addr(service, &private_endpoint);
-					printf("000000000000 \n\n");
 				} else if (private_endpoint.addr == 0) {
 					DHCPCallbackData* data = malloc(sizeof(DHCPCallbackData));
 					data->service = service;

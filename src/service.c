@@ -396,6 +396,7 @@ Session* service_alloc_session(Endpoint* service_endpoint, Endpoint* client_endp
 
 	//Add to Server
 	uint64_t private_key = session_get_private_key(session);
+	//uint64_t private_key = ((uint64_t)client_endpoint->protocol << 48 | (uint64_t)client_endpoint->addr << 16 | (uint64_t)client_endpoint->port); 
 	if(!server->sessions) {
 		server->sessions = map_create(4096, NULL, NULL, server->endpoint.ni->pool);
 		if(!server->sessions)

@@ -10,10 +10,11 @@
 #include <net/udp.h>
 
 #include "session.h"
+#include "dnat.h"
 #include "service.h"
 
 bool session_recharge(Session* session) {
-/*	bool session_free_event(void* context) {
+	bool session_free_event(void* context) {
 		Session* session = context;
 		service_free_session(session);
 
@@ -37,12 +38,12 @@ bool session_recharge(Session* session) {
 		}
 			
 		return true;
-	}*/
+	}
 	return true;       //for test after test -> delete
 }
 
 bool session_set_fin(Session* session) {
-/*	bool gc(void* context) {
+	bool gc(void* context) {
 		Session* session = context;
 		service_free_session(session);
 		
@@ -61,12 +62,16 @@ bool session_set_fin(Session* session) {
 		printf("Can'nt add service event\n");
 		return false;
 	}
-*/	
+	
 	return true;
 }
 
 inline uint64_t session_get_private_key(Session* session) {
-	return (uint64_t)session->private_endpoint.protocol << 48 | (uint64_t)session->private_endpoint.addr << 16 | (uint64_t)session->private_endpoint.port;
+	if(session->mode == DNAT ) {
+		return (uint64_t)session->client_endpoint.protocol << 48 | (uint64_t)session->client_endpoint.addr << 16 | (uint64_t)session->client_endpoint.port;
+	} else {
+		return (uint64_t)session->private_endpoint.protocol << 48 | (uint64_t)session->private_endpoint.addr << 16 | (uint64_t)session->private_endpoint.port;
+	}
 }
 
 inline uint64_t session_get_public_key(Session* session) {

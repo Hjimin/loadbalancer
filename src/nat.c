@@ -51,6 +51,7 @@ Session* nat_tcp_session_alloc(Endpoint* server_endpoint, Endpoint* service_endp
 	session->translate = nat_tcp_translate;
 	session->untranslate = nat_tcp_untranslate;
 	session->free = nat_tcp_free;
+	session->mode = NAT;
 
 	return session;
 }

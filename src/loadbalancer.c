@@ -119,7 +119,6 @@ bool lb_process(Packet* packet, int ni_num) {
 			NIC* server_ni = session->server_endpoint->ni;
 			session->translate(session, packet);
 			nic_output(server_ni, packet);
-
 			return true;
 		}
 
@@ -129,7 +128,6 @@ bool lb_process(Packet* packet, int ni_num) {
 			NIC* _ni = session->public_endpoint->ni;
 			session->untranslate(session, packet);
 			nic_output(_ni, packet);
-
 			return true;
 		}
 

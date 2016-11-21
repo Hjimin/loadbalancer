@@ -10,12 +10,16 @@
 
 #define SESSIONS	"net.lb.sessions"
 
+#define DNAT		0
+#define NAT		1
+
 typedef struct _Session {
 	Endpoint*	server_endpoint;
 	Endpoint*	public_endpoint;
 	Endpoint	client_endpoint;
 	Endpoint	private_endpoint;
-
+	
+	uint8_t 	mode;
 	uint64_t	event_id;
 	bool		fin;
 	

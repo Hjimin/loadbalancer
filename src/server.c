@@ -231,10 +231,11 @@ Server* server_get(Endpoint* server_endpoint) {
 Session* server_get_session(Endpoint* client_endpoint) {
 //	Map* sessions = nic_config_get(client_endpoint->ni, SESSIONS);
 	Map* sessions = lb_get_sessions(client_endpoint->ni_num);
-	if(!sessions)
+	if(!sessions) 
 		return NULL;
 
 	uint64_t key = ((uint64_t)client_endpoint->protocol << 48 | (uint64_t)client_endpoint->addr << 16 | (uint64_t)client_endpoint->port);
+	
 	return map_get(sessions, (void*)key);
 }
 
