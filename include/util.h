@@ -64,26 +64,50 @@ inline void tcp_dest_translate(Packet* packet, uint32_t new_ip, uint16_t new_por
 	tcp->checksum = (uint16_t)~sum;
 }
 
-inline void udp_src_port_translate(TCP* udp, uint16_t old_port, uint16_t new_port) {
-	uint32_t sum = ~endian16(udp->checksum);
-	int16_t* carry = (int16_t*)&sum + 1;
-	sum -= old_port;
-	sum += *carry;
-	sum += new_port;
-	sum += *carry;
+inline void udp_src_translate(Packet* packet, uint32_t new_ip, uint16_t new_port) {
+	Ether* ether = (Ether*)(packet->buffer + packet->start);
+	IP* ip = (IP*)ether->payload;
+	UDP* udp = (UDP*)((uint8_t*)ip + ip->ihl * 4);
 
-	udp->checksum = endian16((uint16_t)~sum);
-	udp->source = new_port;
+	uint32_t sum = (uint16_t)~udp->checksum;
+	int16_t* carry = (int16_t*)&sum + 1;
+
+	ip->source = endian32(new_ip);
+
+	if(new_port != endian16(udp->source)) {
+		sum -= udp->source;
+
+		udp->source = endian16(new_port);
+		sum += udp->source;
+	}
+
+	while(*carry) { 
+		sum = (sum & 0xffff) + *carry;
+	}
+
+	udp->checksum = (uint16_t)~sum;
 }
 
-inline void udp_dest_port_translate(TCP* udp, uint16_t old_port, uint16_t new_port) {
-	uint32_t sum = ~endian16(udp->checksum);
-	int16_t* carry = (int16_t*)&sum + 1;
-	sum -= old_port;
-	sum += *carry;
-	sum += new_port;
-	sum += *carry;
+inline void udp_dest_translate(Packet* packet, uint32_t new_ip, uint16_t new_port) {
+	Ether* ether = (Ether*)(packet->buffer + packet->start);
+	IP* ip = (IP*)ether->payload;
+	UDP* udp = (UDP*)((uint8_t*)ip + ip->ihl * 4);
 
-	udp->checksum = endian16((uint16_t)~sum);
-	udp->destination = new_port;
+	uint32_t sum = (uint16_t)~udp->checksum;
+	int16_t* carry = (int16_t*)&sum + 1;
+
+	ip->destination = endian32(new_ip);
+
+	if(new_port != endian16(udp->destination)) {
+		sum -= udp->destination;
+
+		udp->destination = endian16(new_port);
+		sum += udp->destination;
+	}
+
+	while(*carry) { 
+		sum = (sum & 0xffff) + *carry;
+	}
+
+	udp->checksum = (uint16_t)~sum;
 }

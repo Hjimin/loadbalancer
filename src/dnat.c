@@ -119,7 +119,9 @@ static bool dnat_udp_translate(Session* session, Packet* packet) {
 	ip->destination = endian32(server_endpoint->addr);
 	udp->destination = endian16(server_endpoint->port);
 
-	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	if(!session_recharge(session))
 		service_free_session(session);
@@ -161,7 +163,9 @@ static bool dnat_udp_untranslate(Session* session, Packet* packet) {
 	ip->source = endian32(public_endpoint->addr);
 	udp->source = endian16(public_endpoint->port);
 
-	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	if(!session_recharge(session))
 		service_free_session(session);
