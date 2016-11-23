@@ -93,9 +93,12 @@ static bool dnat_tcp_translate(Session* session, Packet* packet) {
 	ether->smac = endian48(server_endpoint->ni->mac);
 	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, server_endpoint->addr, session->private_endpoint.addr));
 
-	tcp_dest_translate(packet, server_endpoint->addr,  server_endpoint->port);
-	ip->checksum = 0;
-	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	ip->destination = endian32(server_endpoint->addr);
+// 	tcp->destination = endian16(server_endpoint->port);
+// 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
+ 	tcp_dest_translate(packet, server_endpoint->addr,  server_endpoint->port);
+ 	ip->checksum = 0;
+ 	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
 
 	if(session->fin && tcp->ack) {
 		event_timer_remove(session->event_id);
@@ -114,12 +117,14 @@ static bool dnat_udp_translate(Session* session, Packet* packet) {
 	UDP* udp = (UDP*)ip->body;
 
 	ether->smac = endian48(server_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, session->private_endpoint.addr, server_endpoint->addr));
+	ether->dmac = endian48(arp_get_mac(server_endpoint->ni, server_endpoint->addr, session->private_endpoint.addr));
 
 	ip->destination = endian32(server_endpoint->addr);
 	udp->destination = endian16(server_endpoint->port);
 
-	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	if(!session_recharge(session))
 		service_free_session(session);
@@ -135,9 +140,12 @@ static bool dnat_tcp_untranslate(Session* session, Packet* packet) {
 
 	ether->smac = endian48(public_endpoint->ni->mac);
 	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, session->client_endpoint.addr, public_endpoint->addr));
-	tcp_src_translate(packet, public_endpoint->addr, public_endpoint->port);
-	ip->checksum = 0;
-	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	ip->source = endian32(public_endpoint->addr);
+// 	tcp->source = endian16(public_endpoint->port);
+// 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
+ 	tcp_src_translate(packet, public_endpoint->addr, public_endpoint->port);
+ 	ip->checksum = 0;
+ 	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
 
 	if(tcp->fin) {
 		if(!session_set_fin(session))
@@ -157,11 +165,13 @@ static bool dnat_udp_untranslate(Session* session, Packet* packet) {
 	UDP* udp = (UDP*)ip->body;
 
 	ether->smac = endian48(public_endpoint->ni->mac);
-	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, public_endpoint->addr, session->client_endpoint.addr));
+	ether->dmac = endian48(arp_get_mac(public_endpoint->ni, session->client_endpoint.addr, public_endpoint->addr));
 	ip->source = endian32(public_endpoint->addr);
 	udp->source = endian16(public_endpoint->port);
 
-	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	if(!session_recharge(session))
 		service_free_session(session);

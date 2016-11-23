@@ -113,10 +113,8 @@ static bool nat_tcp_translate(Session* session, Packet* packet) {
 	TCP* tcp = (TCP*)((uint8_t*)ip + ip->ihl * 4);
 	tcp_src_translate(packet, private_endpoint->addr, private_endpoint->port);
 	tcp_dest_translate(packet, server_endpoint->addr, server_endpoint->port);
-// 	ip->checksum = 0;
-// 	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
-// 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
-	ip_pack(packet, endian16(ip->length) - ip->ihl * 4);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
 
 	if(session->fin && tcp->ack) {
 		event_timer_remove(session->event_id);
@@ -142,8 +140,9 @@ static bool nat_udp_translate(Session* session, Packet* packet) {
 	ip->destination = endian32(server_endpoint->addr);
 	udp->source = endian16(private_endpoint->port);
 	udp->destination = endian16(server_endpoint->port);
-
-	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
+// 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	if(!session_recharge(session))
 		service_free_session(session);
@@ -165,8 +164,6 @@ static bool nat_tcp_untranslate(Session* session, Packet* packet) {
 	tcp_dest_translate(packet, client_endpoint->addr, client_endpoint->port);
 	ip->checksum = 0;
 	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
-
-// 	tcp_pack(packet, endian16(ip->length) - ip->ihl * 4 - tcp->offset * 4);
 
 	if(tcp->fin) {
 		if(!session_set_fin(session)) {
@@ -193,8 +190,10 @@ static bool nat_udp_untranslate(Session* session, Packet* packet) {
 	ip->destination = endian32(session->client_endpoint.addr);
 	udp->source = endian16(public_endpoint->port);
 	udp->destination = endian16(session->client_endpoint.port);
+	ip->checksum = 0;
+	ip->checksum = endian16(checksum(ip, ip->ihl * 4));
 
-	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
+// 	udp_pack(packet, endian16(ip->length) - ip->ihl * 4 - UDP_LEN);
 
 	if(!session_recharge(session)) {
 		service_free_session(session);
